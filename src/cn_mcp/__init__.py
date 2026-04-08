@@ -1,6 +1,6 @@
 """CircuitNotion MCP SDK - Python SDK for the MCP Server."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.2"
 
 from .client import MCPClient
 from .errors import MCPAuthError, MCPError, MCPNotFoundError
