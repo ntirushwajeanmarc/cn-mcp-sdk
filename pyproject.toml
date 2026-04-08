@@ -47,13 +47,13 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/circuitnotion/cn-mcp-sdk"
-Documentation = "https://github.com/circuitnotion/cn-mcp-sdk#readme"
-Repository = "https://github.com/circuitnotion/cn-mcp-sdk.git"
-Issues = "https://github.com/circuitnotion/cn-mcp-sdk/issues"
+Homepage = "https://github.com/ntirushwajeanmarc/cn-mcp-sdk"
+Documentation = "https://github.com/ntirushwajeanmarc/cn-mcp-sdk#readme"
+Repository = "https://github.com/ntirushwajeanmarc/cn-mcp-sdk.git"
+Issues = "https://github.com/ntirushwajeanmarc/cn-mcp-sdk/issues"
 
 [tool.setuptools]
-packages = ["cn_mcp_sdk", "cn_mcp_sdk.modules"]
+packages = ["cn_mcp"]
 package-dir = {"" = "src"}
 
 [tool.black]
