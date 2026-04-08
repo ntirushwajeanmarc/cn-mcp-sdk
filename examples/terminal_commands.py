@@ -2,7 +2,8 @@
 
 from cn_mcp import MCPClient
 
-client = MCPClient(api_key="your-api-key", base_url="http://localhost:8000")
+# Initialize client (uses https://mcp.circuitnotion.com by default)
+client = MCPClient(api_key="your-api-key")
 
 try:
     # Create a session
@@ -28,13 +29,6 @@ try:
     )
     print(f"Return code: {result['exit_code']}")
     print(f"Output (first 500 chars):\n{result['output'][:500]}\n")
-
-    # Get terminal stats
-    print("Terminal stats:")
-    stats = client.terminal.get_stats(session_id)
-    print(f"  Active sessions: {stats['active_sessions']}")
-    print(f"  Total commands: {stats['total_commands']}")
-    print(f"  Uptime: {stats['uptime_seconds']}s")
 
     # Execute with output limit
     print("\nExecuting 'find /' with 100KB output limit...")

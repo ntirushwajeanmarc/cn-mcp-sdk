@@ -10,7 +10,7 @@ print("EXAMPLE 1: Using Context Manager")
 print("=" * 60)
 
 # Context manager ensures proper cleanup
-with MCPClient(api_key="your-api-key", base_url="https://mcp.circuitnotion.com") as client:
+with MCPClient(api_key="your-api-key") as client:
     print("Client initialized with context manager")
     session = client.sessions.create()
     print(f"Session created: {session['session_id']}")
@@ -43,7 +43,7 @@ print("=" * 60)
 print("EXAMPLE 3: Bulk File Operations")
 print("=" * 60)
 
-client = MCPClient(api_key="your-api-key", base_url="https://mcp.circuitnotion.com")
+client = MCPClient(api_key="your-api-key")
 
 try:
     session = client.sessions.create()
@@ -88,7 +88,7 @@ print("\n" + "=" * 60)
 print("EXAMPLE 4: Chaining Operations")
 print("=" * 60)
 
-client = MCPClient(api_key="your-api-key", base_url="https://mcp.circuitnotion.com")
+client = MCPClient(api_key="your-api-key")
 
 try:
     # Create session -> Execute commands -> Store results -> Dispose
@@ -136,7 +136,7 @@ print("\n" + "=" * 60)
 print("EXAMPLE 5: Advanced Task Scheduling")
 print("=" * 60)
 
-client = MCPClient(api_key="your-api-key", base_url="https://mcp.circuitnotion.com")
+client = MCPClient(api_key="your-api-key")
 
 try:
     session = client.sessions.create()

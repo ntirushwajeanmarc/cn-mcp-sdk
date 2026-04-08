@@ -18,13 +18,22 @@ class DevicesClient:
         """
         self._client = client
 
-    def execute(
+    def list(self) -> list[dict[str, Any]]:
+        """List available devices.
+
+        Returns:
+            List of device objects
+        """
+        resp = self._client.get("/devices/list")
+        return resp.json()
+
+    def set_state(
         self,
         device_id: str,
         action: str,
         parameters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Execute an action on a device.
+        """Execute an action on a device (turn on/off, set state, etc.).
 
         Args:
             device_id: Device ID
@@ -35,33 +44,13 @@ class DevicesClient:
             Device action result
         """
         resp = self._client.post(
-            f"/devices/{device_id}/execute",
+            "/devices/set_state",
             json={
+                "device_id": device_id,
                 "action": action,
                 "parameters": parameters or {},
             },
         )
-        return resp.json()
-
-    def list(self) -> list[dict[str, Any]]:
-        """List available devices.
-
-        Returns:
-            List of device objects
-        """
-        resp = self._client.get("/devices")
-        return resp.json()
-
-    def get_status(self, device_id: str) -> dict[str, Any]:
-        """Get current device status.
-
-        Args:
-            device_id: Device ID
-
-        Returns:
-            Device status information
-        """
-        resp = self._client.get(f"/devices/{device_id}/status")
         return resp.json()
 
 

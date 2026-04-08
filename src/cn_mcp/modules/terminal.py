@@ -34,10 +34,10 @@ class TerminalClient:
             output_limit_kb: Output size limit in KB (default: 4096, max: 4096)
 
         Returns:
-            Execution result with exit_code, stdout, stderr, duration_seconds
+            Execution result with exit_code, output, duration_seconds
         """
         resp = self._client.post(
-            "/terminal/execute",
+            "/terminal/exec",
             json={
                 "session_id": session_id,
                 "command": command,
@@ -45,18 +45,6 @@ class TerminalClient:
                 "output_limit_kb": output_limit_kb,
             },
         )
-        return resp.json()
-
-    def get_stats(self, session_id: str) -> dict[str, Any]:
-        """Get terminal statistics for a session.
-
-        Args:
-            session_id: Session ID
-
-        Returns:
-            Terminal statistics
-        """
-        resp = self._client.get("/terminal/stats", params={"session_id": session_id})
         return resp.json()
 
 

@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 from cn_mcp import MCPClient
 import json
 
-client = MCPClient(api_key="your-api-key", base_url="http://localhost:8000")
+# Initialize client (uses https://mcp.circuitnotion.com by default)
+client = MCPClient(api_key=\"your-api-key\")
 
 try:
     # Create a session

@@ -23,7 +23,7 @@ class SearchClient:
         query: str,
         location: str | None = None,
         num_results: int = 10,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         """Search the web using SerpAPI.
 
         Args:
@@ -32,16 +32,16 @@ class SearchClient:
             num_results: Number of results (default: 10)
 
         Returns:
-            List of search results with title, url, snippet, position
+            Search response with organic_results, related_questions, ai_summary
         """
-        params = {
-            "q": query,
+        payload = {
+            "query": query,
             "num": num_results,
         }
         if location:
-            params["location"] = location
+            payload["location"] = location
 
-        resp = self._client.get("/search/web", params=params)
+        resp = self._client.post("/search", json=payload)
         return resp.json()
 
 

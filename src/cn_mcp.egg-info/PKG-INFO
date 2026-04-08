@@ -1,0 +1,299 @@
+Metadata-Version: 2.4
+Name: cn-mcp
+Version: 0.2.0
+Summary: Python SDK for CircuitNotion MCP Server
+Author-email: CircuitNotion <dev@circuitnotion.com>
+License: MIT
+Project-URL: Homepage, https://github.com/ntirushwajeanmarc/cn-mcp-sdk
+Project-URL: Documentation, https://github.com/ntirushwajeanmarc/cn-mcp-sdk#readme
+Project-URL: Repository, https://github.com/ntirushwajeanmarc/cn-mcp-sdk.git
+Project-URL: Issues, https://github.com/ntirushwajeanmarc/cn-mcp-sdk/issues
+Keywords: circuitnotion,mcp,sdk,client,api
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: httpx>=0.24.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Requires-Dist: black>=23.0; extra == "dev"
+Requires-Dist: isort>=5.12; extra == "dev"
+Requires-Dist: mypy>=1.0; extra == "dev"
+Requires-Dist: ruff>=0.1; extra == "dev"
+
+# CircuitNotion MCP SDK
+
+A simple Python SDK for interacting with the CircuitNotion MCP Server.
+
+## Installation
+
+```bash
+pip install cn-mcp
+```
+
+Or from source:
+
+```bash
+pip install -e .
+```
+
+## Quick Start
+
+```python
+from cn_mcp_sdk import MCPClient
+
+# Initialize client
+client = MCPClient(api_key="your-api-key", base_url="http://localhost:8000")
+
+# Create a session
+session = client.sessions.create()
+print(f"Session ID: {session['session_id']}")
+
+# Write a file
+file_resp = client.files.write(
+    session_id=session['session_id'],
+    path="/output/hello.txt",
+    content="Hello, World!"
+)
+print(f"File ID: {file_resp['file_id']}")
+
+# List files
+files = client.files.list(session_id=session['session_id'])
+for f in files:
+    print(f"  {f['path']} ({f['bytes']} bytes)")
+
+# Execute a terminal command
+result = client.terminal.execute(
+    session_id=session['session_id'],
+    command="echo 'Hello' && ls -la",
+    timeout_minutes=5
+)
+print(f"Exit code: {result['exit_code']}")
+print(f"Output: {result['stdout']}")
+
+# Search the web
+search_results = client.search.web("Python best practices")
+for result in search_results:
+    print(f"  {result['title']}: {result['url']}")
+
+# Schedule a task
+task = client.scheduler.schedule(
+    in_seconds=60,
+    payload={"message": "Task executed!"}
+)
+print(f"Task ID: {task['task_id']}")
+
+# Control a device
+device_result = client.devices.execute(
+    device_id="device-123",
+    action="turn_on",
+    parameters={"brightness": 100}
+)
+
+# Query the database
+rows = client.db.query(
+    session_id=session['session_id'],
+    sql="SELECT * FROM users LIMIT 10"
+)
+
+# Dispose session
+client.sessions.dispose(session['session_id'])
+```
+
+## API Documentation
+
+### Sessions
+
+```python
+# Create a session
+session = client.sessions.create()
+
+# List active sessions
+sessions = client.sessions.list()
+
+# Dispose a session
+client.sessions.dispose(session_id)
+```
+
+### Files
+
+```python
+# Write a file
+file_resp = client.files.write(session_id, path, content)
+
+# List files in a session
+files = client.files.list(session_id)
+
+# Download a file
+content = client.files.download(file_id)
+
+# Delete a file
+client.files.delete(file_id)
+```
+
+### Terminal
+
+```python
+# Execute a command
+result = client.terminal.execute(
+    session_id=session_id,
+    command="pip list",
+    timeout_minutes=5,
+    output_limit_kb=4096
+)
+# Returns: {
+#   "exit_code": 0,
+#   "stdout": "...",
+#   "stderr": "",
+#   "duration_seconds": 1.23
+# }
+```
+
+### Search
+
+```python
+# Web search
+results = client.search.web("Python")
+
+# With location
+results = client.search.web("restaurants", location="New York")
+
+# Returns: [
+#   {
+#     "title": "...",
+#     "url": "...",
+#     "snippet": "...",
+#     "position": 1
+#   },
+#   ...
+# ]
+```
+
+### Scheduler
+
+```python
+# Schedule a task in N seconds
+task = client.scheduler.schedule(
+    in_seconds=300,
+    payload={"data": "value"}
+)
+
+# Schedule at specific time (ISO format)
+task = client.scheduler.schedule(
+    run_at="2026-04-08T15:30:00Z",
+    payload={"data": "value"}
+)
+
+# List tasks
+tasks = client.scheduler.list()
+
+# Cancel a task
+client.scheduler.cancel(task_id)
+```
+
+### Devices
+
+```python
+# Control a device
+result = client.devices.execute(
+    device_id="device-123",
+    action="turn_on",
+    parameters={"level": 80}
+)
+```
+
+### Database
+
+```python
+# Query (read-only)
+rows = client.db.query(
+    session_id=session_id,
+    sql="SELECT * FROM table"
+)
+
+# Execute (write operations)
+result = client.db.execute(
+    session_id=session_id,
+    sql="INSERT INTO table (col) VALUES (?)",
+    params=["value"]
+)
+```
+
+### Cache Stats
+
+```python
+# Get API key cache statistics
+stats = client.auth.cache_stats()
+# Returns: {
+#   "size": 45,
+#   "max_size": 1000,
+#   "ttl_seconds": 300,
+#   "negative_ttl_seconds": 30
+# }
+```
+
+## Configuration
+
+### Via Constructor
+
+```python
+client = MCPClient(
+    api_key="your-api-key",
+    base_url="http://localhost:8000",
+    timeout=30,
+    verify_ssl=True
+)
+```
+
+### Via Environment Variables
+
+```bash
+export MCP_API_KEY=your-api-key
+export MCP_BASE_URL=http://localhost:8000
+export MCP_TIMEOUT=30
+export MCP_VERIFY_SSL=true
+```
+
+```python
+# Uses env vars by default
+client = MCPClient()
+```
+
+## Error Handling
+
+```python
+from cn_mcp_sdk import MCPClient, MCPError, MCPAuthError, MCPNotFoundError
+
+try:
+    session = client.sessions.create()
+except MCPAuthError as e:
+    print(f"Authentication failed: {e}")
+except MCPNotFoundError as e:
+    print(f"Resource not found: {e}")
+except MCPError as e:
+    print(f"API error: {e}")
+```
+
+## Examples
+
+See the `examples/` directory for more detailed examples:
+
+- `basic_usage.py` - Basic session and file operations
+- `terminal_commands.py` - Running terminal commands
+- `web_search.py` - Web search functionality
+- `scheduled_tasks.py` - Scheduling and managing tasks
+- `device_control.py` - Controlling devices
+- `database_queries.py` - Database operations
+
+## License
+
+MIT

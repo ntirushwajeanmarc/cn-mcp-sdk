@@ -2,8 +2,8 @@
 
 from cn_mcp import MCPClient
 
-# Initialize client with API key
-client = MCPClient(api_key="your-api-key", base_url="http://localhost:8000")
+# Initialize client with API key (uses https://mcp.circuitnotion.com by default)
+client = MCPClient(api_key="your-api-key")
 
 try:
     # Create a session
