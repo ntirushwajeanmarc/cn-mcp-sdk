@@ -53,7 +53,7 @@ Repository = "https://github.com/ntirushwajeanmarc/cn-mcp-sdk.git"
 Issues = "https://github.com/ntirushwajeanmarc/cn-mcp-sdk/issues"
 
 [tool.setuptools]
-packages = ["cn_mcp"]
+packages = ["cn_mcp", "cn_mcp.modules"]
 package-dir = {"" = "src"}
 
 [tool.black]
