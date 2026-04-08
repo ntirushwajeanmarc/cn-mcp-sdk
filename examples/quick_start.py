@@ -12,7 +12,7 @@ from cn_mcp import MCPClient
 
 # Initialize the client with your API key
 # Default server: https://mcp.circuitnotion.com
-client = MCPClient(api_key="9b2e4c84-6116-4ecd-8384-3b49bcffe6b2")
+client = MCPClient(api_key="your-api-key")
 
 try:
     # Create a session
