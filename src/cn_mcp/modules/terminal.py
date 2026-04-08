@@ -23,7 +23,7 @@ class TerminalClient:
         session_id: str,
         command: str,
         timeout_minutes: int = 5,
-        output_limit_kb: int = 4096,
+        output_limit_kb: int = 256,
     ) -> dict[str, Any]:
         """Execute a terminal command in a session.
 
@@ -31,21 +31,25 @@ class TerminalClient:
             session_id: Session ID
             command: Shell command to execute
             timeout_minutes: Command timeout in minutes (default: 5, max: 60)
-            output_limit_kb: Output size limit in KB (default: 4096, max: 4096)
+            output_limit_kb: Output size limit in KB (default: 256, max: 4096)
 
         Returns:
-            Execution result with exit_code, output, duration_seconds
+            Execution result with exit_code, stdout, stderr, duration_ms, truncated
         """
         resp = self._client.post(
             "/terminal/exec",
             json={
                 "session_id": session_id,
-                "command": command,
+                "cmd": command,
                 "timeout_minutes": timeout_minutes,
-                "output_limit_kb": output_limit_kb,
+                "max_output_kb": output_limit_kb,
             },
         )
-        return resp.json()
+        result = resp.json()
+        # Normalize response to provide unified 'output' field combining stdout and stderr
+        if "stdout" in result:
+            result["output"] = result.get("stdout", "") + result.get("stderr", "")
+        return result
 
 
 __all__ = ["TerminalClient"]
