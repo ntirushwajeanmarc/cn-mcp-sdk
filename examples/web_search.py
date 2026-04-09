@@ -6,17 +6,17 @@ import json
 client = MCPClient(api_key="your-api-key")
 
 try:
-    session = client.sessions.create()
-    session_id = session["session_id"]
-    print(f"Session: {session_id}\n")
+    # List available tools
+    print("Available tools:")
+    tools = client.list_tools()
+    print(f"  {tools}\n")
 
     # Basic search
     print("Searching: 'Python asyncio tutorial'")
-    results = client.search.web(query="Python asyncio tutorial")
-    
+    results = client.tool_call("web_search", query="Python asyncio tutorial")
+
     # Handle both dict and list responses
     if isinstance(results, dict):
-        # Dict response (has organic_results, query, etc.)
         print(f"Found {len(results.get('organic_results', []))} results\n")
         for i, result in enumerate(results.get('organic_results', [])[:3], 1):
             print(f"{i}. {result.get('title', 'N/A')}")
@@ -25,41 +25,22 @@ try:
                 print(f"   {result['snippet'][:100]}...")
             print()
     else:
-        # List response
         print(f"Found {len(results)} results\n")
         for i, result in enumerate(results[:3], 1):
             print(f"{i}. {result.get('title', 'N/A')}")
             print(f"   {result.get('link', 'N/A')}\n")
 
-    # Search with location
-    print("\nSearching: 'best restaurants' in San Francisco")
-    response = client.search.web(
-        query="best restaurants",
-        location="San Francisco",
-        num_results=5,
-    )
-    
-    if isinstance(response, dict):
-        for i, result in enumerate(response.get('organic_results', [])[:3], 1):
-            print(f"{i}. {result.get('title', 'N/A')}")
-            print(f"   {result.get('link', 'N/A')}\n")
+    # Dynamic tool calling
+    print("Using tool_call for web search...")
+    results = client.tool_call("web_search", query="Python best practices")
+    if isinstance(results, dict):
+        result_list = results.get('organic_results', [])
     else:
-        for i, result in enumerate(response[:3], 1):
-            print(f"{i}. {result.get('title', 'N/A')}")
-            print(f"   {result.get('link', 'N/A')}\n")
+        result_list = results
+    print(f"✓ tool_call found {len(result_list)} results\n")
 
-    # Store results to file
-    print("Storing search results in session file...")
-    search_results = client.search.web(query="PostgreSQL async drivers")
-    
-    client.files.write(
-        session_id=session_id,
-        path="/output/search_results.json",
-        content=json.dumps(search_results if isinstance(search_results, dict) else {"results": search_results}, indent=2),
-    )
-    print("✓ Results saved to search_results.json")
-
-    client.sessions.dispose(session_id)
+except Exception as e:
+    print(f"Error: {e}")
 
 finally:
     client.close()

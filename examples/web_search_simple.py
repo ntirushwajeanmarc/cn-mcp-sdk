@@ -12,8 +12,8 @@ client = MCPClient(api_key="")
 try:
     # Simple search
     print("Searching for 'Python tutorial'...\n")
-    results = client.search.web(query="Python tutorial")
-    
+    results = client.tool_call("web_search", query="what is the current weather in kigali?")
+
     # Handle response (could be dict or list)
     if isinstance(results, dict):
         # Dict response with organic_results

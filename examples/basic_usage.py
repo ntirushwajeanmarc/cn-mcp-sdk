@@ -6,15 +6,22 @@ from cn_mcp import MCPClient
 client = MCPClient(api_key="your-api-key")
 
 try:
+    # List available tools
+    print("Available tools:")
+    tools = client.list_tools()
+    for tool in tools:
+        print(f"  - {tool}")
+
     # Create a session
-    print("Creating session...")
-    session = client.sessions.create()
+    print("\nCreating session...")
+    session = client.tool_call("session_create")
     session_id = session["session_id"]
     print(f"✓ Session created: {session_id}")
 
     # Write a file
     print("\nWriting file...")
-    file_resp = client.files.write(
+    file_resp = client.tool_call(
+        "file_write",
         session_id=session_id,
         path="/output/hello.txt",
         content="Hello, World!",
@@ -23,30 +30,35 @@ try:
 
     # List files
     print("\nListing files...")
-    files = client.files.list(session_id=session_id)
+    files = client.tool_call("file_list", session_id=session_id)
     for f in files:
         print(f"  - {f['path']} ({f['bytes']} bytes)")
 
     # Download file
     print("\nDownloading file...")
-    content = client.files.download_text(file_resp["file_id"])
+    content = client.tool_call("file_download", file_id=file_resp["file_id"])
     print(f"✓ Downloaded: {content}")
 
     # Get cache stats
     print("\nCache stats:")
-    stats = client.auth.cache_stats()
+    stats = client.tool_call("cache_stats")
     print(f"  Size: {stats['size']}/{stats['max_size']}")
     print(f"  TTL: {stats['ttl_seconds']}s")
 
     # List sessions
     print("\nActive sessions:")
-    sessions = client.sessions.list()
+    sessions = client.tool_call("session_list")
     for s in sessions:
         print(f"  - {s['session_id']} (status: {s['status']})")
 
+    # Dynamic tool calling example
+    print("\nDynamic tool calling:")
+    result = client.tool_call("file_list", session_id=session_id)
+    print(f"✓ Called tool_call('file_list'): {len(result)} files found")
+
     # Dispose session
     print("\nDisposing session...")
-    client.sessions.dispose(session_id)
+    client.tool_call("session_dispose", session_id=session_id)
     print("✓ Session disposed")
 
 finally:

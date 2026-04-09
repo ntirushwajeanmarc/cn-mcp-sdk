@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: cn-mcp
-Version: 0.2.1
+Version: 0.2.3
 Summary: Python SDK for CircuitNotion MCP Server
 Author-email: CircuitNotion <dev@circuitnotion.com>
 License: MIT
@@ -49,10 +49,10 @@ pip install -e .
 ## Quick Start
 
 ```python
-from cn_mcp_sdk import MCPClient
+from cn_mcp import MCPClient
 
 # Initialize client
-client = MCPClient(api_key="your-api-key", base_url="http://localhost:8000")
+client = MCPClient(api_key="your-api-key")
 
 # Create a session
 session = client.sessions.create()
@@ -78,35 +78,77 @@ result = client.terminal.execute(
     timeout_minutes=5
 )
 print(f"Exit code: {result['exit_code']}")
-print(f"Output: {result['stdout']}")
+print(f"Output: {result['output']}")
 
 # Search the web
 search_results = client.search.web("Python best practices")
 for result in search_results:
     print(f"  {result['title']}: {result['url']}")
 
-# Schedule a task
-task = client.scheduler.schedule(
-    in_seconds=60,
-    payload={"message": "Task executed!"}
-)
-print(f"Task ID: {task['task_id']}")
-
 # Control a device
-device_result = client.devices.execute(
+device_result = client.devices.set_state(
     device_id="device-123",
     action="turn_on",
     parameters={"brightness": 100}
 )
 
-# Query the database
-rows = client.db.query(
-    session_id=session['session_id'],
-    sql="SELECT * FROM users LIMIT 10"
-)
-
 # Dispose session
 client.sessions.dispose(session['session_id'])
+```
+
+## Dynamic Tool Calling
+
+The SDK provides a unified interface for calling tools dynamically, which is useful for AI agents:
+
+```python
+from cn_mcp import MCPClient
+
+client = MCPClient(api_key="your-api-key")
+
+# List all available tools
+tools = client.list_tools()
+print(f"Available tools: {tools}")
+# ['web_search', 'device_list', 'device_set_state', 'terminal_exec', 'file_list', ...]
+
+# Call tools dynamically by name
+result = client.tool_call("web_search", query="Python tutorials")
+print(result)
+
+# Works with any tool
+result = client.tool_call("terminal_exec", session_id="abc", command="ls -la")
+print(result)
+```
+
+### AI Agent Integration
+
+```python
+from cn_mcp import MCPClient
+import json
+
+client = MCPClient(api_key="your-api-key")
+
+# Prompt template for AI agents
+prompt = f"""
+You are an AI assistant with access to tools.
+
+If a tool is needed, respond ONLY in JSON:
+
+{{
+  "tool": "tool_name",
+  "arguments": {{}}
+}}
+
+Available tools: {client.list_tools()}
+"""
+
+# Parse and execute tool calls from AI response
+ai_response = '{"tool": "web_search", "arguments": {"query": "Python"}}'
+response_data = json.loads(ai_response)
+
+result = client.tool_call(
+    response_data["tool"],
+    **response_data["arguments"]
+)
 ```
 
 ## API Documentation
@@ -181,30 +223,28 @@ results = client.search.web("restaurants", location="New York")
 ### Scheduler
 
 ```python
-# Schedule a task in N seconds
-task = client.scheduler.schedule(
-    in_seconds=300,
-    payload={"data": "value"}
+# List scheduled jobs
+jobs = client.scheduler.list_jobs()
+
+# Create a scheduled job
+job = client.scheduler.create_job(
+    schedule="0 * * * *",  # cron format
+    command="echo 'hourly task'",
+    session_id="session-123"
 )
 
-# Schedule at specific time (ISO format)
-task = client.scheduler.schedule(
-    run_at="2026-04-08T15:30:00Z",
-    payload={"data": "value"}
-)
-
-# List tasks
-tasks = client.scheduler.list()
-
-# Cancel a task
-client.scheduler.cancel(task_id)
+# Delete a job
+client.scheduler.delete_job(job_id)
 ```
 
 ### Devices
 
 ```python
+# List available devices
+devices = client.devices.list()
+
 # Control a device
-result = client.devices.execute(
+result = client.devices.set_state(
     device_id="device-123",
     action="turn_on",
     parameters={"level": 80}
@@ -216,14 +256,12 @@ result = client.devices.execute(
 ```python
 # Query (read-only)
 rows = client.db.query(
-    session_id=session_id,
-    sql="SELECT * FROM table"
+    query="SELECT * FROM table"
 )
 
 # Execute (write operations)
 result = client.db.execute(
-    session_id=session_id,
-    sql="INSERT INTO table (col) VALUES (?)",
+    query="INSERT INTO table (col) VALUES (?)",
     params=["value"]
 )
 ```
@@ -271,7 +309,7 @@ client = MCPClient()
 ## Error Handling
 
 ```python
-from cn_mcp_sdk import MCPClient, MCPError, MCPAuthError, MCPNotFoundError
+from cn_mcp import MCPClient, MCPError, MCPAuthError, MCPNotFoundError
 
 try:
     session = client.sessions.create()
@@ -282,6 +320,32 @@ except MCPNotFoundError as e:
 except MCPError as e:
     print(f"API error: {e}")
 ```
+
+## Available Tools
+
+The SDK provides the following tools via `tool_call()`:
+
+| Tool | Description |
+|------|-------------|
+| `web_search` | Search the web |
+| `device_list` | List available devices |
+| `device_set_state` | Control a device |
+| `terminal_exec` | Execute terminal commands |
+| `file_list` | List files in a session |
+| `file_write` | Write a file |
+| `file_download` | Download a file |
+| `file_delete` | Delete a file |
+| `session_create` | Create a session |
+| `session_list` | List sessions |
+| `session_get` | Get session details |
+| `session_dispose` | Dispose a session |
+| `scheduler_list` | List scheduled jobs |
+| `scheduler_create` | Create a scheduled job |
+| `scheduler_delete` | Delete a job |
+| `db_query` | Query database |
+| `db_execute` | Execute database command |
+| `cache_stats` | Get cache statistics |
+| `cache_clear` | Clear cache |
 
 ## Examples
 

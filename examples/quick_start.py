@@ -12,20 +12,25 @@ from cn_mcp import MCPClient
 
 # Initialize the client with your API key
 # Default server: https://mcp.circuitnotion.com
-client = MCPClient(api_key="your-api-key")
+client = MCPClient(api_key="")
 
 try:
+    # List available tools
+    print("Available tools:")
+    tools = client.list_tools()
+    print(f"  {tools}\n")
+
     # Create a session
     print("Creating session...")
-    session = client.sessions.create()
+    session = client.tool_call("session_create")
     session_id = session["session_id"]
     print(f"✓ Session created: {session_id}\n")
 
     # List available devices
     print("Fetching devices...")
-    devices = client.devices.list(session_id=session_id)
+    devices = client.tool_call("device_list")
     print(f"✓ Found {len(devices)} device(s)")
-    
+
     if devices:
         for device in devices[:3]:  # Show first 3
             print(f"  - {device.get('name', 'Unknown')}: {device.get('type', 'unknown')}")
@@ -33,23 +38,24 @@ try:
 
     # Write a file to the session
     print("Writing file...")
-    file_resp = client.files.write(
+    file_resp = client.tool_call(
+        "file_write",
         session_id=session_id,
         path="/output/hello.txt",
         content="Hello from cn-mcp SDK!"
     )
     print(f"✓ File written: {file_resp['file_id']}\n")
 
-    # List files in session
-    print("Session files:")
-    files = client.files.list(session_id=session_id)
+    # List files in session using dynamic tool calling
+    print("Session files (using tool_call):")
+    files = client.tool_call("file_list", session_id=session_id)
     for f in files:
         print(f"  - {f['path']} ({f['bytes']} bytes)")
     print()
 
     # Clean up
     print("Disposing session...")
-    client.sessions.dispose(session_id)
+    client.tool_call("session_dispose", session_id=session_id)
     print("✓ Done!")
 
 except Exception as e:

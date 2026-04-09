@@ -4,6 +4,24 @@ This directory contains practical examples demonstrating how to use the CN MCP S
 
 ## Available Examples
 
+### 0. `dynamic_tool_usage.py` - AI Agent Integration
+Learn how to use dynamic tool calling for AI agents:
+- List all available tools with `list_tools()`
+- Call tools dynamically with `tool_call()`
+- Parse AI responses and execute tools
+- Build prompts for AI agents
+
+**Run it:**
+```bash
+python examples/dynamic_tool_usage.py
+```
+
+**Key APIs:**
+- `client.list_tools()` - Get list of all available tools
+- `client.tool_call(name, **kwargs)` - Call any tool by name
+
+---
+
 ### 1. `basic_usage.py` - Getting Started
 Learn the fundamentals of using the SDK:
 - Creating and disposing sessions
