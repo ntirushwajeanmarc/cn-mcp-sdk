@@ -7,7 +7,7 @@ This is the easiest way to use the web search feature.
 from cn_mcp import MCPClient
 
 # Initialize client
-client = MCPClient(api_key="")
+client = MCPClient(api_key="93622f50-6ab5-4d30-967e-1248e1a373e6")
 
 try:
     # Simple search

@@ -18,6 +18,8 @@ class FilesClient:
             client: HTTP client instance
         """
         self._client = client
+        # Store base_url for constructing full download URLs
+        self._base_url = str(client.base_url).rstrip("/")
 
     def write(
         self,
@@ -33,7 +35,7 @@ class FilesClient:
             content: File content (str or bytes)
 
         Returns:
-            File metadata with file_id, path, bytes, download_url
+            File metadata with file_id, path, bytes, download_url (fully qualified)
         """
         if isinstance(content, str):
             content = content.encode("utf-8")
@@ -48,7 +50,11 @@ class FilesClient:
                 "content_base64": content_b64,
             },
         )
-        return resp.json()
+        result = resp.json()
+        # Patch download_url to be fully qualified
+        if "download_url" in result:
+            result["download_url"] = self._base_url + result["download_url"]
+        return result
 
     def list(self, session_id: str) -> list[dict[str, Any]]:
         """List files in a session.
