@@ -24,7 +24,7 @@ class AuthClient:
         Returns:
             Cache stats with size, max_size, ttl_seconds, negative_ttl_seconds
         """
-        resp = self._client.get("/auth/cache-stats")
+        resp = self._client.get("/auth/cache/stats")
         return resp.json()
 
     def logout(self) -> None:

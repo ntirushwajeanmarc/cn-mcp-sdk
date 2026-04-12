@@ -1,42 +1,37 @@
-"""Database query example."""
+"""Database operations example for session-backed SQLite."""
 
 from cn_mcp import MCPClient
+
 
 client = MCPClient(api_key="your-api-key")
 
 try:
-    # List available tools
-    print("Available tools:")
-    tools = client.list_tools()
-    for tool in tools:
-        print(f"  - {tool}")
-    print()
+    session = client.sessions.create()
+    workspace = client.bind_session(session["session_id"])
 
-    # Read-only query example
-    print("Executing read-only query...")
-    results = client.tool_call(
-        "db_query",
-        query="SELECT user_id, email FROM users WHERE status = $1",
-        params=["active"],
+    print("Creating a table...")
+    created = client.db.execute(
+        session_id=workspace.session_id,
+        sql="CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT)",
     )
-    print(f"Found {len(results)} active users\n")
+    print(created)
 
-    # Write operation example
-    print("Executing write operation...")
-    insert_result = client.tool_call(
-        "db_execute",
-        query="INSERT INTO audit_logs (action, created_at) VALUES ($1, NOW()) RETURNING id",
-        params=["db_query_example"],
+    print("\nInserting a row...")
+    inserted = client.db.execute(
+        session_id=workspace.session_id,
+        sql="INSERT INTO notes (body) VALUES (?)",
+        params=["Remember to ship the SDK update"],
     )
-    print(f"✓ Inserted log ID: {insert_result}\n")
+    print(inserted)
 
-    # Dynamic tool calling
-    print("Using tool_call for database query...")
-    results = client.tool_call("db_query", query="SELECT * FROM users LIMIT 5")
-    print(f"✓ Found {len(results)} users via tool_call\n")
+    print("\nQuerying rows...")
+    rows = client.db.query(
+        session_id=workspace.session_id,
+        sql="SELECT id, body FROM notes",
+    )
+    print(rows)
 
-except Exception as e:
-    print(f"Error: {e}")
+    workspace.dispose()
 
 finally:
     client.close()

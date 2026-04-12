@@ -1,6 +1,6 @@
 # CircuitNotion MCP SDK
 
-A simple Python SDK for interacting with the CircuitNotion MCP Server.
+Python SDK for the CircuitNotion MCP server.
 
 ## Installation
 
@@ -8,324 +8,120 @@ A simple Python SDK for interacting with the CircuitNotion MCP Server.
 pip install cn-mcp
 ```
 
-Or from source:
-
-```bash
-pip install -e .
-```
-
 ## Quick Start
 
 ```python
 from cn_mcp import MCPClient
 
-# Initialize client
 client = MCPClient(api_key="your-api-key")
 
-# Create a session
 session = client.sessions.create()
-print(f"Session ID: {session['session_id']}")
+workspace = client.bind_session(session["session_id"])
 
-# Write a file
 file_resp = client.files.write(
-    session_id=session['session_id'],
-    path="/output/hello.txt",
-    content="Hello, World!"
+    session_id=session["session_id"],
+    path="output/hello.txt",
+    content="Hello, World!",
 )
-print(f"File ID: {file_resp['file_id']}")
+print(file_resp["download_url"])
 
-# List files
-files = client.files.list(session_id=session['session_id'])
-for f in files:
-    print(f"  {f['path']} ({f['bytes']} bytes)")
+result = workspace.tool_call("terminal_exec", cmd="echo hello")
+print(result["stdout"])
 
-# Execute a terminal command
-result = client.terminal.execute(
-    session_id=session['session_id'],
-    command="echo 'Hello' && ls -la",
-    timeout_minutes=5
-)
-print(f"Exit code: {result['exit_code']}")
-print(f"Output: {result['output']}")
+devices = client.devices.list()
+print(devices)
 
-# Search the web
-search_results = client.search.web("Python best practices")
-for result in search_results:
-    print(f"  {result['title']}: {result['url']}")
-
-# Control a device
-device_result = client.devices.set_state(
-    device_id="device-123",
-    action="turn_on",
-    parameters={"brightness": 100}
-)
-
-# Dispose session
-client.sessions.dispose(session['session_id'])
+client.sessions.dispose(session["session_id"])
 ```
+
+For agentic workflows, `bind_session()` keeps session-backed tools aligned with
+the published MCP metadata without manually injecting `session_id`.
 
 ## Dynamic Tool Calling
 
-The SDK provides a unified interface for calling tools dynamically, which is useful for AI agents:
+The SDK now reads the live tool contract from the server, so `list_tools()` and
+`tool_call()` stay aligned with the deployed MCP.
 
 ```python
 from cn_mcp import MCPClient
 
 client = MCPClient(api_key="your-api-key")
 
-# List all available tools
-tools = client.list_tools()
-print(f"Available tools: {tools}")
-# ['web_search', 'device_list', 'device_set_state', 'terminal_exec', 'file_list', ...]
+print(client.list_tools())
 
-# Call tools dynamically by name
-result = client.tool_call("web_search", query="Python tutorials")
-print(result)
-
-# Works with any tool
-result = client.tool_call("terminal_exec", session_id="abc", command="ls -la")
+result = client.tool_call("device_set_state", device_name="kitchen", state="on")
 print(result)
 ```
 
-### AI Agent Integration
+Use `get_tools()` or `get_tool_schema("tool_name")` if you want the full
+published metadata from `/mcp/tools`.
 
-```python
-from cn_mcp import MCPClient
-import json
-
-client = MCPClient(api_key="your-api-key")
-
-# Prompt template for AI agents
-prompt = f"""
-You are an AI assistant with access to tools.
-
-If a tool is needed, respond ONLY in JSON:
-
-{{
-  "tool": "tool_name",
-  "arguments": {{}}
-}}
-
-Available tools: {client.list_tools()}
-"""
-
-# Parse and execute tool calls from AI response
-ai_response = '{"tool": "web_search", "arguments": {"query": "Python"}}'
-response_data = json.loads(ai_response)
-
-result = client.tool_call(
-    response_data["tool"],
-    **response_data["arguments"]
-)
-```
-
-## API Documentation
+## Main APIs
 
 ### Sessions
 
 ```python
-# Create a session
 session = client.sessions.create()
-
-# List active sessions
 sessions = client.sessions.list()
-
-# Dispose a session
-client.sessions.dispose(session_id)
+client.sessions.dispose(session["session_id"])
 ```
 
 ### Files
 
 ```python
-# Write a file
-file_resp = client.files.write(session_id, path, content)
-
-# List files in a session
-files = client.files.list(session_id)
-
-# Download a file
-content = client.files.download(file_id)
-
-# Delete a file
-client.files.delete(file_id)
+file_resp = client.files.write(session["session_id"], "reports/out.zip", b"zip bytes")
+files = client.files.list(session["session_id"])
+content = client.files.download(file_resp["file_id"])
+client.files.delete(file_resp["file_id"])
 ```
+
+`download_url` values returned by the server are concrete absolute URLs when the
+server knows its public base URL from the request.
 
 ### Terminal
 
 ```python
-# Execute a command
 result = client.terminal.execute(
-    session_id=session_id,
-    command="pip list",
+    session_id=session["session_id"],
+    command="python --version",
     timeout_minutes=5,
-    output_limit_kb=4096
+    output_limit_kb=1024,
 )
-# Returns: {
-#   "exit_code": 0,
-#   "stdout": "...",
-#   "stderr": "",
-#   "duration_seconds": 1.23
-# }
 ```
 
 ### Search
 
 ```python
-# Web search
-results = client.search.web("Python")
-
-# With location
-results = client.search.web("restaurants", location="New York")
-
-# Returns: [
-#   {
-#     "title": "...",
-#     "url": "...",
-#     "snippet": "...",
-#     "position": 1
-#   },
-#   ...
-# ]
-```
-
-### Scheduler
-
-```python
-# List scheduled jobs
-jobs = client.scheduler.list_jobs()
-
-# Create a scheduled job
-job = client.scheduler.create_job(
-    schedule="0 * * * *",  # cron format
-    command="echo 'hourly task'",
-    session_id="session-123"
-)
-
-# Delete a job
-client.scheduler.delete_job(job_id)
+results = client.search.web("CircuitNotion")
+print(results["organic_results"])
 ```
 
 ### Devices
 
 ```python
-# List available devices
 devices = client.devices.list()
+result = client.devices.set_state(device_name="living room light", state="off")
+```
 
-# Control a device
-result = client.devices.set_state(
-    device_id="device-123",
-    action="turn_on",
-    parameters={"level": 80}
-)
+### Scheduler
+
+```python
+task = client.scheduler.schedule(payload={"message": "follow up"}, in_seconds=300)
+tasks = client.scheduler.list()
+client.scheduler.cancel(task["task_id"])
 ```
 
 ### Database
 
 ```python
-# Query (read-only)
 rows = client.db.query(
-    query="SELECT * FROM table"
+    session_id=session["session_id"],
+    sql="SELECT name FROM sqlite_master WHERE type = ?",
+    params=["table"],
 )
 
-# Execute (write operations)
-result = client.db.execute(
-    query="INSERT INTO table (col) VALUES (?)",
-    params=["value"]
+client.db.execute(
+    session_id=session["session_id"],
+    sql="CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT)",
 )
 ```
-
-### Cache Stats
-
-```python
-# Get API key cache statistics
-stats = client.auth.cache_stats()
-# Returns: {
-#   "size": 45,
-#   "max_size": 1000,
-#   "ttl_seconds": 300,
-#   "negative_ttl_seconds": 30
-# }
-```
-
-## Configuration
-
-### Via Constructor
-
-```python
-client = MCPClient(
-    api_key="your-api-key",
-    base_url="http://localhost:8000",
-    timeout=30,
-    verify_ssl=True
-)
-```
-
-### Via Environment Variables
-
-```bash
-export MCP_API_KEY=your-api-key
-export MCP_BASE_URL=http://localhost:8000
-export MCP_TIMEOUT=30
-export MCP_VERIFY_SSL=true
-```
-
-```python
-# Uses env vars by default
-client = MCPClient()
-```
-
-## Error Handling
-
-```python
-from cn_mcp import MCPClient, MCPError, MCPAuthError, MCPNotFoundError
-
-try:
-    session = client.sessions.create()
-except MCPAuthError as e:
-    print(f"Authentication failed: {e}")
-except MCPNotFoundError as e:
-    print(f"Resource not found: {e}")
-except MCPError as e:
-    print(f"API error: {e}")
-```
-
-## Available Tools
-
-The SDK provides the following tools via `tool_call()`:
-
-| Tool | Description |
-|------|-------------|
-| `web_search` | Search the web |
-| `device_list` | List available devices |
-| `device_set_state` | Control a device |
-| `terminal_exec` | Execute terminal commands |
-| `file_list` | List files in a session |
-| `file_write` | Write a file |
-| `file_download` | Download a file |
-| `file_delete` | Delete a file |
-| `session_create` | Create a session |
-| `session_list` | List sessions |
-| `session_get` | Get session details |
-| `session_dispose` | Dispose a session |
-| `scheduler_list` | List scheduled jobs |
-| `scheduler_create` | Create a scheduled job |
-| `scheduler_delete` | Delete a job |
-| `db_query` | Query database |
-| `db_execute` | Execute database command |
-| `cache_stats` | Get cache statistics |
-| `cache_clear` | Clear cache |
-
-## Examples
-
-See the `examples/` directory for more detailed examples:
-
-- `basic_usage.py` - Basic session and file operations
-- `terminal_commands.py` - Running terminal commands
-- `web_search.py` - Web search functionality
-- `scheduled_tasks.py` - Scheduling and managing tasks
-- `device_control.py` - Controlling devices
-- `database_queries.py` - Database operations
-
-## License
-
-MIT

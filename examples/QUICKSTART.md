@@ -6,126 +6,90 @@
 pip install cn-mcp
 ```
 
-## Usage
+## Basic Setup
 
-### 1. Basic Setup
 ```python
 from cn_mcp import MCPClient
 
-# Create a client (uses https://mcp.circuitnotion.com by default)
 client = MCPClient(api_key="your-api-key")
 ```
 
-### 2. Create a Session
+## Create a Session Workspace
+
 ```python
 session = client.sessions.create()
-session_id = session["session_id"]
-print(f"Session ID: {session_id}")
+workspace = client.bind_session(session["session_id"])
+print(workspace.session_id)
 ```
 
-### 3. List Devices
+Or use automatic cleanup:
+
 ```python
-devices = client.devices.list(session_id=session_id)
-for device in devices:
-    print(f"{device['name']}: {device['type']}")
+with client.session() as workspace:
+    print(workspace.session_id)
 ```
 
-### 4. Execute Commands
+## Discover the Live Tool Contract
+
 ```python
-result = client.terminal.execute(
-    cmd="ls -la",
-    session_id=session_id
-)
+for tool in client.get_tools():
+    print(tool["name"], tool["endpoint"], tool.get("requires_session"))
+```
+
+## Execute Commands
+
+```python
+result = workspace.tool_call("terminal_exec", cmd="ls -la")
 print(result["output"])
 ```
 
-### 5. Manage Files
+## Manage Files
+
 ```python
-# Write a file
-client.files.write(
-    session_id=session_id,
-    path="/output/data.json",
-    content='{"key": "value"}'
+file_resp = workspace.tool_call(
+    "file_write",
+    path="output/data.txt",
+    content_base64="SGVsbG8=",
 )
 
-# Read a file
-content = client.files.download_text(file_id)
-print(content)
+print(file_resp["download_url"])
 
-# List files
-files = client.files.list(session_id=session_id)
+files = workspace.tool_call("file_list")
+binary = client.tool_call("file_download", file_id=file_resp["file_id"])
 ```
 
-### 6. Schedule Tasks
+## Devices
+
 ```python
-task = client.scheduler.schedule(
-    payload={"action": "backup"},
-    in_seconds=60,
-    session_id=session_id
+devices = client.devices.list()
+if devices:
+    client.devices.set_state(device_name=devices[0]["name"], state="on")
+```
+
+## Database
+
+```python
+client.db.execute(
+    session_id=workspace.session_id,
+    sql="CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT)",
 )
-print(f"Task scheduled: {task['task_id']}")
+
+rows = client.db.query(
+    session_id=workspace.session_id,
+    sql="SELECT * FROM notes",
+)
 ```
 
-### 7. Close Session
+## Scheduler
+
 ```python
-client.sessions.dispose(session_id)
+task = client.scheduler.schedule(payload={"action": "backup"}, in_seconds=60)
+print(task["task_id"])
+```
+
+## Cleanup
+
+```python
+workspace.dispose()
 client.close()
 ```
-
-## Running the Examples
-
-```bash
-cd examples
-
-# Quick start
-python quick_start.py
-
-# Basic usage
-python basic_usage.py
-
-# Device control
-python device_control.py
-
-# Advanced patterns
-python advanced_patterns.py
-```
-
-## Configuration
-
-**Environment Variables:**
-```bash
-export MCP_API_KEY=your-api-key
-export MCP_BASE_URL=https://mcp.circuitnotion.com  # optional, default
-export MCP_TIMEOUT=30                               # optional
-export MCP_VERIFY_SSL=true                          # optional
-```
-
-**Or pass directly:**
-```python
-client = MCPClient(
-    api_key="your-api-key",
-    base_url="https://mcp.circuitnotion.com",
-    timeout=30,
-    verify_ssl=True
-)
-```
-
-## Error Handling
-
-```python
-from cn_mcp import MCPClient, MCPAuthError, MCPNotFoundError, MCPError
-
-try:
-    client = MCPClient(api_key="invalid-key")
-except MCPAuthError as e:
-    print(f"Auth failed: {e}")
-except MCPNotFoundError as e:
-    print(f"Resource not found: {e}")
-except MCPError as e:
-    print(f"API error: {e}")
-```
-
-## Documentation
-
-- [Full API Documentation](https://github.com/ntirushwajeanmarc/cn-mcp-sdk#readme)
-- [PyPI Package](https://pypi.org/project/cn-mcp/)

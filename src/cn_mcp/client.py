@@ -18,27 +18,52 @@ from .modules.sessions import SessionsClient
 from .modules.terminal import TerminalClient
 
 
-_TOOL_REGISTRY = {
-    "web_search": ("search", "web", {"query": {"type": "string", "required": True}, "limit": {"type": "integer"}}),
-    "device_list": ("devices", "list", {}),
-    "device_set_state": ("devices", "set_state", {"device_id": {"type": "string", "required": True}, "action": {"type": "string", "required": True}, "parameters": {"type": "object"}}),
-    "terminal_exec": ("terminal", "execute", {"session_id": {"type": "string", "required": True}, "command": {"type": "string", "required": True}, "timeout_minutes": {"type": "integer"}, "output_limit_kb": {"type": "integer"}}),
-    "file_list": ("files", "list", {"session_id": {"type": "string", "required": True}}),
-    "file_write": ("files", "write", {"session_id": {"type": "string", "required": True}, "path": {"type": "string", "required": True}, "content": {"type": "string", "required": True}}),
-    "file_download": ("files", "download", {"file_id": {"type": "string", "required": True}}),
-    "file_delete": ("files", "delete", {"file_id": {"type": "string", "required": True}}),
-    "session_create": ("sessions", "create", {"name": {"type": "string"}, "template": {"type": "string"}, "timeout_minutes": {"type": "integer"}}),
-    "session_list": ("sessions", "list", {}),
-    "session_get": ("sessions", "get", {"session_id": {"type": "string", "required": True}}),
-    "session_dispose": ("sessions", "dispose", {"session_id": {"type": "string", "required": True}}),
-    "scheduler_list": ("scheduler", "list_jobs", {}),
-    "scheduler_create": ("scheduler", "create_job", {"schedule": {"type": "string", "required": True}, "command": {"type": "string", "required": True}, "session_id": {"type": "string", "required": True}}),
-    "scheduler_delete": ("scheduler", "delete_job", {"job_id": {"type": "string", "required": True}}),
-    "db_query": ("db", "query", {"query": {"type": "string", "required": True}, "params": {"type": "object"}}),
-    "db_execute": ("db", "execute", {"query": {"type": "string", "required": True}, "params": {"type": "object"}}),
-    "cache_stats": ("auth", "cache_stats", {}),
-    "cache_clear": ("auth", "clear_cache", {}),
-}
+def _matches_schema_type(value: Any, schema_type: str) -> bool:
+    if schema_type == "string":
+        return isinstance(value, str)
+    if schema_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if schema_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if schema_type == "object":
+        return isinstance(value, dict)
+    if schema_type == "array":
+        return isinstance(value, list)
+    if schema_type == "boolean":
+        return isinstance(value, bool)
+    return True
+
+
+class BoundSessionClient:
+    """Session-bound wrapper for tools that operate on a workspace."""
+
+    def __init__(self, client: "MCPClient", session_id: str, *, auto_dispose: bool = False):
+        self._client = client
+        self.session_id = session_id
+        self._auto_dispose = auto_dispose
+
+    def __enter__(self) -> "BoundSessionClient":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if self._auto_dispose:
+            self.dispose()
+
+    def dispose(self) -> dict[str, Any]:
+        """Dispose the bound session."""
+        return self._client.sessions.dispose(self.session_id)
+
+    def get_tool_schema(self, tool_name: str, refresh: bool = False) -> dict[str, Any]:
+        return self._client.get_tool_schema(tool_name, refresh=refresh)
+
+    def list_tools(self, refresh: bool = False) -> list[str]:
+        return self._client.list_tools(refresh=refresh)
+
+    def tool_call(self, tool_name: str, **kwargs: Any) -> dict[str, Any]:
+        tool = self._client.get_tool_schema(tool_name)
+        if tool.get("requires_session") and "session_id" not in kwargs:
+            kwargs = {"session_id": self.session_id, **kwargs}
+        return self._client.tool_call(tool_name, **kwargs)
 
 
 class MCPClient:
@@ -87,6 +112,7 @@ class MCPClient:
         self.scheduler = SchedulerClient(self._client)
         self.devices = DevicesClient(self._client)
         self.db = DatabaseClient(self._client)
+        self._tools_cache: dict[str, dict[str, Any]] = {}
 
     def __enter__(self):
         """Context manager entry."""
@@ -100,16 +126,47 @@ class MCPClient:
         """Close the HTTP client connection."""
         self._client.close()
 
-    def list_tools(self) -> list[str]:
-        """List all available tool names.
+    def bind_session(self, session_id: str) -> BoundSessionClient:
+        """Bind an existing session to a helper that auto-injects ``session_id``."""
+        return BoundSessionClient(self, session_id)
+
+    def session(self) -> BoundSessionClient:
+        """Create and return a disposable bound session helper."""
+        session_id = self.sessions.create()["session_id"]
+        return BoundSessionClient(self, session_id, auto_dispose=True)
+
+    def get_tools(self, refresh: bool = False) -> list[dict[str, Any]]:
+        """Fetch tool metadata from the server.
+
+        Args:
+            refresh: When True, bypass the local tool cache.
 
         Returns:
-            List of tool names as strings
+            Tool metadata objects from ``GET /mcp/tools``.
         """
-        return list(_TOOL_REGISTRY.keys())
+        if not refresh and self._tools_cache:
+            return list(self._tools_cache.values())
+
+        data = self._request("GET", "/mcp/tools")
+        tools = data.get("tools", [])
+        self._tools_cache = {tool["name"]: tool for tool in tools if "name" in tool}
+        return tools
+
+    def list_tools(self, refresh: bool = False) -> list[str]:
+        """List tool names exposed by the server."""
+        return [tool["name"] for tool in self.get_tools(refresh=refresh)]
+
+    def get_tool_schema(self, tool_name: str, refresh: bool = False) -> dict[str, Any]:
+        """Return one tool schema from the server."""
+        if not refresh and tool_name in self._tools_cache:
+            return self._tools_cache[tool_name]
+
+        tool = self._request("GET", f"/mcp/tools/{tool_name}")
+        self._tools_cache[tool_name] = tool
+        return tool
 
     def tool_call(self, tool_name: str, **kwargs: Any) -> dict[str, Any]:
-        """Call a tool by name dynamically.
+        """Call a tool by name using the server's published tool contract.
 
         Args:
             tool_name: Tool name (e.g., "web_search", "device_list", "terminal_exec")
@@ -121,14 +178,73 @@ class MCPClient:
         Raises:
             MCPError: If tool not found or call fails
         """
-        if tool_name not in _TOOL_REGISTRY:
-            available = ", ".join(_TOOL_REGISTRY.keys())
-            raise MCPError(f"Unknown tool: {tool_name}. Available tools: {available}")
+        tool = self.get_tool_schema(tool_name)
+        endpoint = tool.get("endpoint")
+        if not endpoint or " " not in endpoint:
+            raise MCPError(f"Tool {tool_name!r} is missing a valid endpoint declaration")
 
-        module_name, method_name, _ = _TOOL_REGISTRY[tool_name]
-        module = getattr(self, module_name)
-        method = getattr(module, method_name)
-        return method(**kwargs)
+        method, path = endpoint.split(" ", 1)
+        path_only = path.split("?", 1)[0]
+        path_params = set()
+
+        while "{" in path_only and "}" in path_only:
+            start = path_only.index("{")
+            end = path_only.index("}", start)
+            key = path_only[start + 1:end]
+            if key not in kwargs:
+                raise MCPError(f"Missing required path parameter: {key}")
+            path_params.add(key)
+            path_only = path_only[:start] + str(kwargs[key]) + path_only[end + 1:]
+
+        remaining = {k: v for k, v in kwargs.items() if k not in path_params}
+        self._validate_tool_arguments(tool_name, tool, remaining, path_params)
+
+        if method == "GET":
+            return self._request("GET", path_only, params=remaining)
+        if method == "DELETE":
+            return self._request("DELETE", path_only, params=remaining)
+        if method == "POST":
+            return self._request("POST", path_only, json=remaining)
+
+        raise MCPError(f"Unsupported tool HTTP method: {method}")
+
+    def _validate_tool_arguments(
+        self,
+        tool_name: str,
+        tool: dict[str, Any],
+        arguments: dict[str, Any],
+        path_params: set[str],
+    ) -> None:
+        schema = tool.get("input_schema")
+        if not isinstance(schema, dict):
+            return
+
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        missing = [name for name in required if name not in arguments and name not in path_params]
+        if missing:
+            raise MCPError(f"Tool {tool_name!r} is missing required arguments: {', '.join(missing)}")
+
+        if not isinstance(properties, dict):
+            return
+
+        for name, value in arguments.items():
+            spec = properties.get(name)
+            if not isinstance(spec, dict):
+                continue
+
+            schema_type = spec.get("type")
+            if isinstance(schema_type, str) and not _matches_schema_type(value, schema_type):
+                raise MCPError(
+                    f"Tool {tool_name!r} argument {name!r} must be of type {schema_type}"
+                )
+
+            enum_values = spec.get("enum")
+            if isinstance(enum_values, list) and value not in enum_values:
+                allowed = ", ".join(map(str, enum_values))
+                raise MCPError(
+                    f"Tool {tool_name!r} argument {name!r} must be one of: {allowed}"
+                )
 
     def call_tool(self, tool_name: str, arguments: dict[str, Any] | None = None, **kwargs: Any) -> dict[str, Any]:
         """Call a tool by name with arguments dictionary or kwargs.
@@ -198,7 +314,14 @@ class MCPClient:
             if resp.status_code == 204:
                 return {}
 
-            return resp.json()
+            content_type = resp.headers.get("content-type", "").lower()
+            if "application/json" in content_type:
+                return resp.json()
+
+            return {
+                "content": resp.content,
+                "content_type": content_type,
+            }
 
         except httpx.HTTPError as e:
             raise MCPError(f"Request failed: {e}")

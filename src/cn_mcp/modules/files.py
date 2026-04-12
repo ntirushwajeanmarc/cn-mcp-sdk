@@ -51,8 +51,8 @@ class FilesClient:
             },
         )
         result = resp.json()
-        # Patch download_url to be fully qualified
-        if "download_url" in result:
+        # Patch relative download_url to be fully qualified
+        if "download_url" in result and isinstance(result["download_url"], str) and result["download_url"].startswith("/"):
             result["download_url"] = self._base_url + result["download_url"]
         return result
 

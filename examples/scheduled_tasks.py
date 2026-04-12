@@ -1,40 +1,30 @@
-"""Scheduled tasks example."""
+"""Scheduled task example using the current scheduler API."""
 
 from cn_mcp import MCPClient
-import json
+
 
 client = MCPClient(api_key="your-api-key")
 
 try:
-    # List available tools
-    print("Available tools:")
-    tools = client.list_tools()
-    for tool in tools:
-        print(f"  - {tool}")
-    print()
+    print("Existing scheduled tasks:")
+    tasks = client.scheduler.list()
+    print(f"  Found {len(tasks)} task(s)")
 
-    # List scheduled jobs
-    print("Scheduled jobs:")
-    jobs = client.tool_call("scheduler_list")
-    print(f"  Found {len(jobs)} jobs\n")
-
-    # Create a scheduled job
-    print("Creating scheduled job...")
-    job = client.tool_call(
-        "scheduler_create",
-        schedule="0 * * * *",
-        command="echo 'hourly task'",
-        session_id="session-123",
+    print("\nCreating a scheduled task...")
+    task = client.scheduler.schedule(
+        payload={"action": "send_reminder", "message": "Check build status"},
+        in_seconds=300,
     )
-    print(f"✓ Job created: {job.get('job_id')}\n")
+    print(f"✓ Task created: {task['task_id']}")
+    print(f"  Run at: {task['run_at']}")
 
-    # Dynamic tool calling
-    print("Using tool_call to list jobs...")
-    jobs = client.tool_call("scheduler_list")
-    print(f"✓ Found {len(jobs)} jobs via tool_call\n")
+    print("\nListing via tool_call...")
+    tasks = client.tool_call("time_scheduled_tasks")
+    print(f"✓ Found {len(tasks)} task(s)")
 
-except Exception as e:
-    print(f"Error: {e}")
+    print("\nCancelling the task...")
+    cancelled = client.scheduler.cancel(task["task_id"])
+    print(f"✓ Cancelled: {cancelled['status']}")
 
 finally:
     client.close()

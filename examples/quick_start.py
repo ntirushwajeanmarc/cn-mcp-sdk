@@ -1,65 +1,36 @@
-"""
-Quick Start Example for cn-mcp SDK
-
-Installation:
-    pip install cn-mcp
-
-Usage:
-    python quick_start.py
-"""
+"""Quick start example for cn-mcp."""
 
 from cn_mcp import MCPClient
 
-# Initialize the client with your API key
-# Default server: https://mcp.circuitnotion.com
-client = MCPClient(api_key="")
+
+client = MCPClient(api_key="your-api-key")
 
 try:
-    # List available tools
     print("Available tools:")
-    tools = client.list_tools()
-    print(f"  {tools}\n")
+    print(client.list_tools())
 
-    # Create a session
-    print("Creating session...")
-    session = client.tool_call("session_create")
-    session_id = session["session_id"]
-    print(f"✓ Session created: {session_id}\n")
+    session = client.sessions.create()
+    workspace = client.bind_session(session["session_id"])
+    print(f"\nSession: {workspace.session_id}")
 
-    # List available devices
-    print("Fetching devices...")
-    devices = client.tool_call("device_list")
-    print(f"✓ Found {len(devices)} device(s)")
+    devices = client.devices.list()
+    print(f"\nDevices found: {len(devices)}")
+    for device in devices[:3]:
+        print(f"  - {device['name']} ({device['type']}, {device['state']})")
 
-    if devices:
-        for device in devices[:3]:  # Show first 3
-            print(f"  - {device.get('name', 'Unknown')}: {device.get('type', 'unknown')}")
-    print()
-
-    # Write a file to the session
-    print("Writing file...")
-    file_resp = client.tool_call(
-        "file_write",
-        session_id=session_id,
-        path="/output/hello.txt",
-        content="Hello from cn-mcp SDK!"
+    file_resp = client.files.write(
+        session_id=workspace.session_id,
+        path="output/hello.txt",
+        content="Hello from cn-mcp SDK!",
     )
-    print(f"✓ File written: {file_resp['file_id']}\n")
+    print(f"\nFile written: {file_resp['file_id']}")
+    print(f"Download URL: {file_resp['download_url']}")
 
-    # List files in session using dynamic tool calling
-    print("Session files (using tool_call):")
-    files = client.tool_call("file_list", session_id=session_id)
-    for f in files:
-        print(f"  - {f['path']} ({f['bytes']} bytes)")
-    print()
+    result = workspace.tool_call("terminal_exec", cmd="pwd")
+    print(f"\nCurrent workspace:\n{result['output'].strip()}")
 
-    # Clean up
-    print("Disposing session...")
-    client.tool_call("session_dispose", session_id=session_id)
-    print("✓ Done!")
-
-except Exception as e:
-    print(f"Error: {e}")
+    workspace.dispose()
+    print("\nDone")
 
 finally:
     client.close()

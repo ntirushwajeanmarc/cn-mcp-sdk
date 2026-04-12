@@ -1,46 +1,27 @@
-"""Device control example."""
+"""Device control example for the current device contract."""
 
 from cn_mcp import MCPClient
-import json
+
 
 client = MCPClient(api_key="your-api-key")
 
 try:
-    # List available tools
-    print("Available tools:")
-    tools = client.list_tools()
-    for tool in tools:
-        print(f"  - {tool}")
-    print()
-
-    # List available devices
     print("Available devices:")
-    devices = client.tool_call("device_list")
+    devices = client.devices.list()
     for device in devices:
-        print(f"  - {device.get('name', 'Unknown')} ({device.get('device_id', 'N/A')})")
-        print(f"    Type: {device.get('type', 'unknown')}")
-        print(f"    Status: {device.get('status', 'unknown')}")
-    print()
+        print(f"  - {device['name']}")
+        print(f"    Type: {device['type']}")
+        print(f"    State: {device['state']}")
 
-    # Set state on a specific device
     if devices:
-        device_id = devices[0].get("device_id")
-        print(f"Turning on {device_id}...")
-        result = client.tool_call(
-            "device_set_state",
-            device_id=device_id,
-            action="turn_on",
-            parameters={"mode": "auto"},
-        )
-        print(f"✓ Action executed: {result}\n")
+        target_name = devices[0]["name"]
+        print(f"\nTurning on {target_name}...")
+        result = client.devices.set_state(device_name=target_name, state="on")
+        print(f"✓ Updated: {result}")
 
-    # Dynamic tool calling
-    print("Using tool_call for device control...")
-    result = client.tool_call("device_set_state", device_id=device_id, action="turn_off")
-    print(f"✓ Device turned off via tool_call\n")
-
-except Exception as e:
-    print(f"Error: {e}")
+        print(f"\nTurning off {target_name} via dynamic tool call...")
+        result = client.tool_call("device_set_state", device_name=target_name, state="off")
+        print(f"✓ Updated: {result}")
 
 finally:
     client.close()

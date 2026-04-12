@@ -1,64 +1,46 @@
-"""Basic usage example."""
+"""Basic usage example for the current cn-mcp SDK."""
 
 from cn_mcp import MCPClient
 
-# Initialize client with API key (uses https://mcp.circuitnotion.com by default)
+
 client = MCPClient(api_key="your-api-key")
 
 try:
-    # List available tools
     print("Available tools:")
-    tools = client.list_tools()
-    for tool in tools:
-        print(f"  - {tool}")
+    for tool_name in client.list_tools():
+        print(f"  - {tool_name}")
 
-    # Create a session
     print("\nCreating session...")
-    session = client.tool_call("session_create")
+    session = client.sessions.create()
     session_id = session["session_id"]
+    workspace = client.bind_session(session_id)
     print(f"✓ Session created: {session_id}")
 
-    # Write a file
     print("\nWriting file...")
-    file_resp = client.tool_call(
+    file_resp = workspace.tool_call(
         "file_write",
-        session_id=session_id,
-        path="/output/hello.txt",
-        content="Hello, World!",
+        path="output/hello.txt",
+        content_base64="SGVsbG8sIFdvcmxkIQ==",
     )
     print(f"✓ File written: {file_resp['file_id']}")
+    print(f"  Download URL: {file_resp['download_url']}")
 
-    # List files
     print("\nListing files...")
-    files = client.tool_call("file_list", session_id=session_id)
-    for f in files:
-        print(f"  - {f['path']} ({f['bytes']} bytes)")
+    files = workspace.tool_call("file_list")
+    for file_info in files:
+        print(f"  - {file_info['path']} ({file_info['bytes']} bytes)")
 
-    # Download file
     print("\nDownloading file...")
-    content = client.tool_call("file_download", file_id=file_resp["file_id"])
-    print(f"✓ Downloaded: {content}")
+    downloaded = client.tool_call("file_download", file_id=file_resp["file_id"])
+    print(f"✓ Downloaded content type: {downloaded['content_type']}")
 
-    # Get cache stats
     print("\nCache stats:")
-    stats = client.tool_call("cache_stats")
+    stats = client.auth.cache_stats()
     print(f"  Size: {stats['size']}/{stats['max_size']}")
     print(f"  TTL: {stats['ttl_seconds']}s")
 
-    # List sessions
-    print("\nActive sessions:")
-    sessions = client.tool_call("session_list")
-    for s in sessions:
-        print(f"  - {s['session_id']} (status: {s['status']})")
-
-    # Dynamic tool calling example
-    print("\nDynamic tool calling:")
-    result = client.tool_call("file_list", session_id=session_id)
-    print(f"✓ Called tool_call('file_list'): {len(result)} files found")
-
-    # Dispose session
     print("\nDisposing session...")
-    client.tool_call("session_dispose", session_id=session_id)
+    workspace.dispose()
     print("✓ Session disposed")
 
 finally:
