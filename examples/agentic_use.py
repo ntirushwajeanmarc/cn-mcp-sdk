@@ -5,12 +5,15 @@ import re
 import sqlite3
 from openai import OpenAI
 from cn_mcp import MCPClient
+import dotenv
+
+dotenv.load_dotenv()
 
 # ── config ────────────────────────────────────────────────────────────────────
 llm   = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
-MODEL = "gemma4:e2b"
+MODEL = "deepseek-v3.1:671b-cloud"
 DB    = "agent.db"
-mcp   = MCPClient(api_key=os.environ["MCP_API_KEY"])
+mcp   = MCPClient(api_key=os.getenv("MCP_API_KEY"))
 
 # ── colors ────────────────────────────────────────────────────────────────────
 DIM, RESET, YEL, RED, GRN, CYN = "\033[2m", "\033[0m", "\033[33m", "\033[31m", "\033[32m", "\033[36m"
@@ -19,6 +22,7 @@ DIM, RESET, YEL, RED, GRN, CYN = "\033[2m", "\033[0m", "\033[33m", "\033[31m", "
 TOOL_SCHEMAS = mcp.get_tools()
 TOOLS = [tool["name"] for tool in TOOL_SCHEMAS]
 print(f"{CYN}Tools:{RESET}", TOOLS)
+TOOL_SCHEMA_MAP = {tool["name"]: tool for tool in TOOL_SCHEMAS}
 
 # ── mcp session ───────────────────────────────────────────────────────────────
 print("Creating MCP session...")
@@ -28,6 +32,14 @@ print(f"MCP session: {MCP_SESSION}")
 
 def call_tool(name: str, args: dict):
     return session_mcp.tool_call(name, **dict(args or {}))
+
+
+def write_text_artifact(path: str, text: str) -> dict:
+    return mcp.files.write(
+        session_id=MCP_SESSION,
+        path=path,
+        content=text,
+    )
 
 # ── sqlite memory ─────────────────────────────────────────────────────────────
 con = sqlite3.connect(DB)
@@ -83,14 +95,19 @@ def db_get_tasks() -> list[dict]:
 
 # ── prompts ───────────────────────────────────────────────────────────────────
 TOOLS_STR = ", ".join(TOOLS)
+SEARCH_SCHEMA = json.dumps(TOOL_SCHEMA_MAP.get("web_search", {}).get("input_schema", {}), ensure_ascii=False)
+TERMINAL_SCHEMA = json.dumps(TOOL_SCHEMA_MAP.get("terminal_exec", {}).get("input_schema", {}), ensure_ascii=False)
+FILE_WRITE_SCHEMA = json.dumps(TOOL_SCHEMA_MAP.get("file_write", {}).get("input_schema", {}), ensure_ascii=False)
 
 PLANNER_PROMPT = f"""You are a senior engineer planning work for an autonomous agent.
 Given a user request, output ONLY a JSON array of high-level tasks.
 
 Rules:
 - Tasks must be meaningful work units, NOT individual shell commands.
-  BAD: ["mkdir backend", "cd backend", "touch server.js"]
-  GOOD: ["scaffold Node/Express backend in todo-app/backend/ with package.json and server.js", ...]
+- Every task must end in a verifiable outcome: a saved file, a checked command result, or a final download-ready artifact.
+- Do NOT create pure "analyze only" tasks. If analysis is needed, make the task save the analysis into a file.
+- BAD: ["analyze search results"]
+- GOOD: ["analyze Rwanda climate data and save structured notes to research/rwanda_climate_notes.md"]
 - Each task should be completable with 1-5 tool calls.
 - Never mention session_id.
 - Output ONLY a JSON array of strings. No markdown. No explanation.
@@ -99,10 +116,9 @@ Available tools: {TOOLS_STR}
 
 Example for "create a todo app and zip it":
 [
-  "scaffold Express backend in todo-app/backend with CRUD routes, package.json, server.js",
-  "scaffold React+Tailwind frontend in todo-app/frontend using Vite",
-  "write all source files for backend (routes, models)",
-  "write all source files for frontend (App.jsx, components, tailwind config)",
+  "scaffold Express backend in todo-app/backend and verify the files exist",
+  "scaffold React frontend in todo-app/frontend and verify the files exist",
+  "write project implementation notes to todo-app/notes/build_notes.md",
   "zip todo-app/backend into todo-app/backend.zip and verify the zip exists",
   "zip todo-app/frontend into todo-app/frontend.zip and verify the zip exists",
   "return the download URLs for backend.zip and frontend.zip"
@@ -117,16 +133,23 @@ STRICT RULES:
 1. You MUST call at least one tool before declaring DONE.
 2. To call a tool respond with raw JSON only (no markdown, no prose):
    {{"tool": "tool_name", "arguments": {{"key": "value"}}}}
-3. You may emit multiple tool JSON objects in one response.
+3. Prefer ONE tool call at a time unless two are obviously needed.
 4. "arguments" must always be a dict, never a string.
-5. session_id is auto-injected — NEVER include it.
+5. session_id is auto-injected for workspace tools — NEVER include it.
 6. ALWAYS use absolute paths. Do NOT rely on `cd` — it doesn't persist between calls.
    Instead of: cd backend && npm install
    Do:         terminal_exec with command "npm --prefix /abs/path/backend install"
-7. After each tool result, decide: call more tools OR respond DONE.
-8. Respond DONE only when you have VERIFIED the task is complete (file exists, command exit_code=0).
-9. If exit_code != 0, you MUST retry with a fix. Do NOT declare DONE on error.
-10. NEVER write prose. NEVER say "I cannot". Either use a tool or respond DONE.
+7. For long text/report writing, prefer terminal_exec with a here-doc or python - <<'PY' to write the file, then verify the file exists.
+8. file_write requires base64 content. For large text, DO NOT use file_write unless you provide valid content_base64.
+9. After each tool result, decide: call more tools OR respond DONE.
+10. Respond DONE only when you have VERIFIED the task is complete (file exists, command exit_code=0).
+11. If exit_code != 0, you MUST retry with a fix. Do NOT declare DONE on error.
+12. NEVER write prose. NEVER say "I cannot". Either use a tool or respond DONE.
+
+Important schemas:
+- web_search: {SEARCH_SCHEMA}
+- terminal_exec: {TERMINAL_SCHEMA}
+- file_write: {FILE_WRITE_SCHEMA}
 """
 
 SUMMARIZER_PROMPT = """You are a helpful assistant. Summarize what was accomplished in 2-3 sentences.
@@ -214,6 +237,32 @@ def is_escape(text: str) -> bool:
         return True
     return False
 
+
+def _slugify(text: str) -> str:
+    text = re.sub(r"[^a-zA-Z0-9]+", "_", text.strip().lower()).strip("_")
+    return text[:60] or "task"
+
+
+def _artifact_path_for_task(task: str, task_num: int) -> str:
+    slug = _slugify(task)
+    if any(word in task.lower() for word in ("report", "draft", "pdf", "summary")):
+        return f"research/task_{task_num:02d}_{slug}.md"
+    return f"research/task_{task_num:02d}_{slug}.txt"
+
+
+def auto_capture_analysis(task: str, reply: str, task_num: int) -> dict | None:
+    if len(reply.strip()) < 200:
+        return None
+    if not any(word in task.lower() for word in ("analy", "synth", "draft", "report", "format", "research")):
+        return None
+    path = _artifact_path_for_task(task, task_num)
+    file_resp = write_text_artifact(path, reply)
+    return {
+        "path": path,
+        "file_id": file_resp.get("file_id"),
+        "download_url": file_resp.get("download_url"),
+    }
+
 # ── run a single tool ─────────────────────────────────────────────────────────
 def run_tool(name: str, args: dict) -> str:
     if isinstance(args, str): args = {"query": args}
@@ -291,6 +340,14 @@ def execute_task(task_id: int, task: str, task_num: int, total: int) -> bool:
 
         # ── escape detection ──
         if is_escape(reply_clean):
+            captured = auto_capture_analysis(task, reply_clean, task_num)
+            if captured:
+                tool_calls_made += 1
+                msg = f"[AUTO-CAPTURED ANALYSIS] saved to {captured['path']} url={captured.get('download_url', '')}"
+                print(f"    {YEL}[auto-captured analysis]{RESET} {captured['path']}")
+                db_add("assistant", reply_clean)
+                db_add("tool", msg)
+                continue
             escape_count += 1
             print(f"    {RED}[WARN] prose escape #{escape_count}/{MAX_ESCAPES}{RESET}: {reply_clean[:150]}")
             if escape_count >= MAX_ESCAPES:
