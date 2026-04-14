@@ -145,7 +145,7 @@ STRICT RULES:
 10. Respond DONE only when you have VERIFIED the task is complete (file exists, command exit_code=0).
 11. If exit_code != 0, you MUST retry with a fix. Do NOT declare DONE on error.
 12. NEVER write prose. NEVER say "I cannot". Either use a tool or respond DONE.
-
+13. For all the files you have created, you must always zip them and provide download URL for that.
 Important schemas:
 - web_search: {SEARCH_SCHEMA}
 - terminal_exec: {TERMINAL_SCHEMA}
