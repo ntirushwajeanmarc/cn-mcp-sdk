@@ -1,23 +1,28 @@
+# Python
 __pycache__/
 *.py[cod]
-*.egg-info/
+
+# Environments
+.env
+*.env
+.env.*
+venv/
+.venv/
+env/
+
+# Caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.venv/
-*/.env
-/.env
+
+# Logs & temp
 *.log
 *.bak
 *.tmp
-.DS_Store
-.idea/
-.vscode/
-.mypy_cache/
-.pytest_cache/
-__pycache__/
-*.env
-/*.env
-/env
-venv/
 
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
