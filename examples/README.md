@@ -37,6 +37,10 @@ Shows both:
 - `workspace.tool_call("terminal_exec", ...)`
 - `client.terminal.execute(...)`
 
+Note: dynamic `tool_call("terminal_exec", ...)` returns raw server fields like
+`stdout` and `stderr`. The typed `client.terminal.execute(...)` helper also adds
+an `output` convenience field.
+
 ### `database_queries.py`
 Uses the current session-backed SQLite API:
 - `client.db.execute(...)`
@@ -70,3 +74,8 @@ Shows:
 - context-managed client usage
 - context-managed session usage
 - bulk operations with typed module APIs
+
+### `agentic_use.py`
+Experimental autonomous orchestration example that combines an LLM and MCP
+tools. It is intentionally advanced and should be treated as a lab/demo script,
+not a production-ready agent runner.

@@ -7,7 +7,7 @@ print("=" * 60)
 print("EXAMPLE 1: Authentication error")
 print("=" * 60)
 
-client = MCPClient(api_key="invalid-key")
+client = MCPClient(api_key="invalid-key", base_url="http://localhost:8000")
 try:
     client.sessions.list()
 except MCPAuthError as exc:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from ._request import request_json, request_list
 
 
 class DevicesClient:
@@ -24,8 +25,7 @@ class DevicesClient:
         Returns:
             List of device objects
         """
-        resp = self._client.get("/devices/list")
-        return resp.json()
+        return request_list(self._client, "GET", "/devices/list")
 
     def set_state(
         self,
@@ -41,14 +41,15 @@ class DevicesClient:
         Returns:
             Device action result
         """
-        resp = self._client.post(
+        return request_json(
+            self._client,
+            "POST",
             "/devices/set_state",
             json={
                 "device_name": device_name,
                 "state": state,
             },
         )
-        return resp.json()
 
 
 __all__ = ["DevicesClient"]

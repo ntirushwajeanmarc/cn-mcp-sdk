@@ -40,7 +40,7 @@ for tool in client.get_tools():
 
 ```python
 result = workspace.tool_call("terminal_exec", cmd="ls -la")
-print(result["output"])
+print(result["stdout"])
 ```
 
 ## Manage Files
@@ -71,7 +71,10 @@ if devices:
 ```python
 client.db.execute(
     session_id=workspace.session_id,
-    sql="CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT)",
+    # db.execute supports INSERT/UPDATE/DELETE statements.
+    # This example assumes a `notes` table already exists.
+    sql="INSERT INTO notes (body) VALUES (?)",
+    params=["hello"],
 )
 
 rows = client.db.query(

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from ._request import request_json, request_list
 
 
 class SchedulerClient:
@@ -36,7 +37,7 @@ class SchedulerClient:
         Returns:
             Scheduled task data with task_id, status, run_at
         """
-        req_data = {"payload": payload}
+        req_data: dict[str, Any] = {"payload": payload}
         if in_seconds is not None:
             req_data["in_seconds"] = in_seconds
         if run_at is not None:
@@ -44,8 +45,7 @@ class SchedulerClient:
         if session_id is not None:
             req_data["session_id"] = session_id
 
-        resp = self._client.post("/scheduler/schedule", json=req_data)
-        return resp.json()
+        return request_json(self._client, "POST", "/scheduler/schedule", json=req_data)
 
     def list(self) -> list[dict[str, Any]]:
         """List all tasks for current user.
@@ -53,8 +53,7 @@ class SchedulerClient:
         Returns:
             List of task objects
         """
-        resp = self._client.get("/scheduler/tasks")
-        return resp.json()
+        return request_list(self._client, "GET", "/scheduler/tasks")
 
     def cancel(self, task_id: str) -> dict[str, Any]:
         """Cancel a task.
@@ -65,8 +64,7 @@ class SchedulerClient:
         Returns:
             Cancelled task data
         """
-        resp = self._client.post(f"/scheduler/tasks/{task_id}/cancel")
-        return resp.json()
+        return request_json(self._client, "POST", f"/scheduler/tasks/{task_id}/cancel")
 
 
 __all__ = ["SchedulerClient"]

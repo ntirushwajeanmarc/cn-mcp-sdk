@@ -6,6 +6,7 @@ import base64
 from typing import Any
 
 import httpx
+from ._request import request_bytes, request_json, request_list
 
 
 class FilesClient:
@@ -42,7 +43,9 @@ class FilesClient:
 
         content_b64 = base64.b64encode(content).decode("utf-8")
 
-        resp = self._client.post(
+        result = request_json(
+            self._client,
+            "POST",
             "/files/write",
             json={
                 "session_id": session_id,
@@ -50,7 +53,6 @@ class FilesClient:
                 "content_base64": content_b64,
             },
         )
-        result = resp.json()
         # Patch relative download_url to be fully qualified
         if "download_url" in result and isinstance(result["download_url"], str) and result["download_url"].startswith("/"):
             result["download_url"] = self._base_url + result["download_url"]
@@ -65,8 +67,7 @@ class FilesClient:
         Returns:
             List of file metadata
         """
-        resp = self._client.get("/files/list", params={"session_id": session_id})
-        return resp.json()
+        return request_list(self._client, "GET", "/files/list", params={"session_id": session_id})
 
     def download(self, file_id: str) -> bytes:
         """Download a file by ID.
@@ -77,8 +78,7 @@ class FilesClient:
         Returns:
             File content as bytes
         """
-        resp = self._client.get(f"/files/download/{file_id}")
-        return resp.content
+        return request_bytes(self._client, "GET", f"/files/download/{file_id}")
 
     def download_text(self, file_id: str, encoding: str = "utf-8") -> str:
         """Download a file as text.
@@ -98,7 +98,7 @@ class FilesClient:
         Args:
             file_id: File ID to delete
         """
-        self._client.delete(f"/files/{file_id}")
+        request_json(self._client, "DELETE", f"/files/{file_id}")
 
 
 __all__ = ["FilesClient"]

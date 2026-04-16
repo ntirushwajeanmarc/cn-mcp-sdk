@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from ._request import request_json
 
 
 class AuthClient:
@@ -24,12 +25,11 @@ class AuthClient:
         Returns:
             Cache stats with size, max_size, ttl_seconds, negative_ttl_seconds
         """
-        resp = self._client.get("/auth/cache/stats")
-        return resp.json()
+        return request_json(self._client, "GET", "/auth/cache/stats")
 
     def logout(self) -> None:
         """Logout and evict current API key from cache."""
-        self._client.post("/auth/logout")
+        request_json(self._client, "POST", "/auth/logout")
 
 
 __all__ = ["AuthClient"]

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from ._request import request_json
 
 
 class SearchClient:
@@ -41,8 +42,7 @@ class SearchClient:
         if location:
             payload["location"] = location
 
-        resp = self._client.post("/search", json=payload)
-        return resp.json()
+        return request_json(self._client, "POST", "/search", json=payload)
 
 
 __all__ = ["SearchClient"]

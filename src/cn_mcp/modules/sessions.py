@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
+from ._request import request_json, request_list
 
 
 class SessionsClient:
@@ -24,8 +25,7 @@ class SessionsClient:
         Returns:
             Session data with session_id, user_id, created_at, last_seen_at, status
         """
-        resp = self._client.post("/sessions")
-        return resp.json()
+        return request_json(self._client, "POST", "/sessions")
 
     def list(self) -> list[dict[str, Any]]:
         """List all active sessions for current user.
@@ -33,8 +33,7 @@ class SessionsClient:
         Returns:
             List of session objects
         """
-        resp = self._client.get("/sessions")
-        return resp.json()
+        return request_list(self._client, "GET", "/sessions")
 
     def dispose(self, session_id: str) -> dict[str, Any]:
         """Dispose a session (stop and clean up).
@@ -45,8 +44,7 @@ class SessionsClient:
         Returns:
             Disposed session data
         """
-        resp = self._client.post(f"/sessions/{session_id}/dispose")
-        return resp.json()
+        return request_json(self._client, "POST", f"/sessions/{session_id}/dispose")
 
 
 __all__ = ["SessionsClient"]

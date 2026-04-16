@@ -19,6 +19,7 @@ env/
 *.log
 *.bak
 *.tmp
+agent.db
 
 # IDEs
 .vscode/

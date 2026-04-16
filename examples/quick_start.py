@@ -27,7 +27,7 @@ try:
     print(f"Download URL: {file_resp['download_url']}")
 
     result = workspace.tool_call("terminal_exec", cmd="pwd")
-    print(f"\nCurrent workspace:\n{result['output'].strip()}")
+    print(f"\nCurrent workspace:\n{result['stdout'].strip()}")
 
     workspace.dispose()
     print("\nDone")

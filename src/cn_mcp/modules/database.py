@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from ._request import request_json
 
 
 class DatabaseClient:
@@ -36,7 +37,9 @@ class DatabaseClient:
         Returns:
             Query result with columns and rows
         """
-        resp = self._client.post(
+        return request_json(
+            self._client,
+            "POST",
             "/db/query",
             json={
                 "session_id": session_id,
@@ -45,7 +48,6 @@ class DatabaseClient:
                 "limit": limit,
             },
         )
-        return resp.json()
 
     def execute(
         self,
@@ -63,7 +65,9 @@ class DatabaseClient:
         Returns:
             Execution result with changes count
         """
-        resp = self._client.post(
+        return request_json(
+            self._client,
+            "POST",
             "/db/execute",
             json={
                 "session_id": session_id,
@@ -71,7 +75,6 @@ class DatabaseClient:
                 "params": params or [],
             },
         )
-        return resp.json()
 
 
 __all__ = ["DatabaseClient"]

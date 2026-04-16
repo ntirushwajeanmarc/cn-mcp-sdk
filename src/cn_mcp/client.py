@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from types import TracebackType
+from typing import Any, Optional, cast
 
 import httpx
 
@@ -45,7 +46,12 @@ class BoundSessionClient:
     def __enter__(self) -> "BoundSessionClient":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         if self._auto_dispose:
             self.dispose()
 
@@ -91,7 +97,8 @@ class MCPClient:
         if not self.api_key:
             raise MCPAuthError("API key not provided. Set MCP_API_KEY env var or pass api_key parameter.")
 
-        self.base_url = (base_url or os.getenv("MCP_BASE_URL", "https://mcp.circuitnotion.com")).rstrip("/")
+        resolved_base_url = base_url or os.getenv("MCP_BASE_URL") or "https://mcp.circuitnotion.com"
+        self.base_url = resolved_base_url.rstrip("/")
         self.timeout = timeout
         self.verify_ssl = verify_ssl
 
@@ -114,15 +121,20 @@ class MCPClient:
         self.db = DatabaseClient(self._client)
         self._tools_cache: dict[str, dict[str, Any]] = {}
 
-    def __enter__(self):
+    def __enter__(self) -> "MCPClient":
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Context manager exit."""
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         """Close the HTTP client connection."""
         self._client.close()
 
@@ -148,7 +160,10 @@ class MCPClient:
             return list(self._tools_cache.values())
 
         data = self._request("GET", "/mcp/tools")
-        tools = data.get("tools", [])
+        tools_raw = data.get("tools", [])
+        if not isinstance(tools_raw, list):
+            raise MCPError("Invalid tools response from server")
+        tools = cast(list[dict[str, Any]], tools_raw)
         self._tools_cache = {tool["name"]: tool for tool in tools if "name" in tool}
         return tools
 
@@ -280,7 +295,7 @@ class MCPClient:
         self,
         method: str,
         endpoint: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Make an HTTP request to the MCP server.
 
@@ -316,7 +331,10 @@ class MCPClient:
 
             content_type = resp.headers.get("content-type", "").lower()
             if "application/json" in content_type:
-                return resp.json()
+                data = resp.json()
+                if not isinstance(data, dict):
+                    raise MCPError("Expected JSON object response")
+                return cast(dict[str, Any], data)
 
             return {
                 "content": resp.content,
@@ -324,9 +342,10 @@ class MCPClient:
             }
 
         except httpx.HTTPError as e:
-            raise MCPError(f"Request failed: {e}")
+            raise MCPError(f"Request failed: {e}") from e
 
 
 __all__ = [
     "MCPClient",
+    "BoundSessionClient",
 ]

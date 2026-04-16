@@ -1,3 +1,36 @@
+Metadata-Version: 2.4
+Name: cn-mcp
+Version: 0.3.0
+Summary: Python SDK for CircuitNotion MCP Server
+Author-email: CircuitNotion <dev@circuitnotion.com>
+License: MIT
+Project-URL: Homepage, https://github.com/ntirushwajeanmarc/cn-mcp-sdk
+Project-URL: Documentation, https://github.com/ntirushwajeanmarc/cn-mcp-sdk#readme
+Project-URL: Repository, https://github.com/ntirushwajeanmarc/cn-mcp-sdk.git
+Project-URL: Issues, https://github.com/ntirushwajeanmarc/cn-mcp-sdk/issues
+Keywords: circuitnotion,mcp,sdk,client,api
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: httpx>=0.24.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Requires-Dist: black>=23.0; extra == "dev"
+Requires-Dist: isort>=5.12; extra == "dev"
+Requires-Dist: mypy>=1.0; extra == "dev"
+Requires-Dist: ruff>=0.1; extra == "dev"
+Dynamic: license-file
+
 # CircuitNotion MCP SDK
 
 Python SDK for the CircuitNotion MCP server.

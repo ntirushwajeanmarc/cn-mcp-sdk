@@ -3,6 +3,7 @@ import json
 import os
 import re
 import sqlite3
+from collections import deque
 from openai import OpenAI
 from cn_mcp import MCPClient
 import dotenv
@@ -10,8 +11,10 @@ import dotenv
 dotenv.load_dotenv()
 
 # ── config ────────────────────────────────────────────────────────────────────
+# Demo script: keep this scoped to non-production environments unless you add
+# execution policy, budget limits, and tool-level allowlists.
 llm   = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
-MODEL = "deepseek-v3.1:671b-cloud"
+MODEL = "qwen3.5:397b-cloud"
 DB    = "agent.db"
 mcp   = MCPClient(api_key=os.getenv("MCP_API_KEY"))
 
@@ -32,7 +35,6 @@ print(f"MCP session: {MCP_SESSION}")
 
 def call_tool(name: str, args: dict):
     return session_mcp.tool_call(name, **dict(args or {}))
-
 
 def write_text_artifact(path: str, text: str) -> dict:
     return mcp.files.write(
@@ -95,9 +97,9 @@ def db_get_tasks() -> list[dict]:
 
 # ── prompts ───────────────────────────────────────────────────────────────────
 TOOLS_STR = ", ".join(TOOLS)
-SEARCH_SCHEMA = json.dumps(TOOL_SCHEMA_MAP.get("web_search", {}).get("input_schema", {}), ensure_ascii=False)
+SEARCH_SCHEMA   = json.dumps(TOOL_SCHEMA_MAP.get("web_search",    {}).get("input_schema", {}), ensure_ascii=False)
 TERMINAL_SCHEMA = json.dumps(TOOL_SCHEMA_MAP.get("terminal_exec", {}).get("input_schema", {}), ensure_ascii=False)
-FILE_WRITE_SCHEMA = json.dumps(TOOL_SCHEMA_MAP.get("file_write", {}).get("input_schema", {}), ensure_ascii=False)
+FILE_WRITE_SCHEMA = json.dumps(TOOL_SCHEMA_MAP.get("file_write",  {}).get("input_schema", {}), ensure_ascii=False)
 
 PLANNER_PROMPT = f"""You are a senior engineer planning work for an autonomous agent.
 Given a user request, output ONLY a JSON array of high-level tasks.
@@ -146,6 +148,7 @@ STRICT RULES:
 11. If exit_code != 0, you MUST retry with a fix. Do NOT declare DONE on error.
 12. NEVER write prose. NEVER say "I cannot". Either use a tool or respond DONE.
 13. For all the files you have created, you must always zip them and provide download URL for that.
+
 Important schemas:
 - web_search: {SEARCH_SCHEMA}
 - terminal_exec: {TERMINAL_SCHEMA}
@@ -162,14 +165,42 @@ def strip_think(text: str) -> str:
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 def chat(system: str, messages: list, stream: bool = False) -> str:
+    import time
     full_messages = [{"role": "system", "content": system}] + messages
-    resp = llm.chat.completions.create(model=MODEL, messages=full_messages, stream=stream)
+    
+    for attempt in range(5):
+        try:
+            resp = llm.chat.completions.create(model=MODEL, messages=full_messages, stream=stream, timeout=120)
+            break
+        except Exception as e:
+            err_msg = str(e).lower()
+            if any(code in err_msg for code in ["503", "502", "504", "timeout", "rate limit"]) and attempt < 4:
+                wait = (attempt + 1) * 3
+                print(f"    {RED}[WARN] LLM error ({e}), retrying in {wait}s... ({attempt+1}/5){RESET}")
+                time.sleep(wait)
+                continue
+            raise e
 
     if not stream:
         return resp.choices[0].message.content.strip()
 
     full, buf, thinking = [], "", False
     for chunk in resp:
+        # Some models use 'reasoning' or 'reasoning_content'
+        reasoning = getattr(chunk.choices[0].delta, "reasoning", None) or getattr(chunk.choices[0].delta, "reasoning_content", None)
+        if reasoning and not thinking:
+            print(f"\n{DIM}[thinking]\n", end="", flush=True)
+            thinking = True
+        if reasoning:
+            print(f"{DIM}{reasoning}{RESET}", end="", flush=True)
+            continue
+        if thinking and not reasoning:
+             # If reasoning stopped but we were thinking, and we have content now
+             content = chunk.choices[0].delta.content or ""
+             if content:
+                 print(f"\n{DIM}[/thinking]{RESET}\n", end="", flush=True)
+                 thinking = False
+
         delta = chunk.choices[0].delta.content or ""
         buf += delta
         if THINK_OPEN in buf and not thinking:
@@ -237,18 +268,15 @@ def is_escape(text: str) -> bool:
         return True
     return False
 
-
 def _slugify(text: str) -> str:
     text = re.sub(r"[^a-zA-Z0-9]+", "_", text.strip().lower()).strip("_")
     return text[:60] or "task"
-
 
 def _artifact_path_for_task(task: str, task_num: int) -> str:
     slug = _slugify(task)
     if any(word in task.lower() for word in ("report", "draft", "pdf", "summary")):
         return f"research/task_{task_num:02d}_{slug}.md"
     return f"research/task_{task_num:02d}_{slug}.txt"
-
 
 def auto_capture_analysis(task: str, reply: str, task_num: int) -> dict | None:
     if len(reply.strip()) < 200:
@@ -283,19 +311,59 @@ def run_tool(name: str, args: dict) -> str:
         print(f"    {RED}{err}{RESET}")
         return err
 
+# ── stall detection ───────────────────────────────────────────────────────────
+# Replaces the flat MAX_ROUNDS cap. A smart model will say DONE when it's done;
+# we only abort if it's clearly stuck: repeating the same call or consecutive errors.
+
+BACKSTOP_ROUNDS   = 60   # absolute last-resort ceiling (not expected to be hit)
+STALL_WINDOW      = 3    # how many recent calls to inspect
+STALL_REPEAT_MAX  = 2    # identical calls in window → stall
+CONSEC_ERROR_MAX  = 4    # consecutive tool errors in a row → stall
+MAX_ESCAPES       = 3    # unchanged: model refusing to act
+
+def _call_sig(name: str, args: dict) -> str:
+    """Stable fingerprint for a tool call."""
+    return f"{name}:{json.dumps(args, sort_keys=True, ensure_ascii=False)}"
+
+class StallDetector:
+    def __init__(self):
+        self.recent: deque[str] = deque(maxlen=STALL_WINDOW)
+        self.consec_errors: int = 0
+
+    def record(self, name: str, args: dict, had_error: bool) -> tuple[bool, str]:
+        """
+        Record a tool call. Returns (is_stalled, reason).
+        """
+        sig = _call_sig(name, args)
+        self.recent.append(sig)
+
+        if had_error:
+            self.consec_errors += 1
+        else:
+            self.consec_errors = 0
+
+        if self.consec_errors >= CONSEC_ERROR_MAX:
+            return True, f"{CONSEC_ERROR_MAX} consecutive tool errors"
+
+        if (len(self.recent) == STALL_WINDOW
+                and self.recent.count(sig) >= STALL_REPEAT_MAX):
+            return True, f"same call repeated {STALL_REPEAT_MAX}x in last {STALL_WINDOW} rounds"
+
+        return False, ""
+
 # ── planner ───────────────────────────────────────────────────────────────────
 def plan(user_input: str, existing_tasks: list[dict] | None = None) -> list[str]:
     print(f"\n{YEL}[planning...]{RESET}")
 
     context = user_input
     if existing_tasks:
-        done = [t["task"] for t in existing_tasks if t["status"] == "done"]
+        done    = [t["task"] for t in existing_tasks if t["status"] == "done"]
         pending = [t["task"] for t in existing_tasks if t["status"] in ("pending", "failed")]
         if done or pending:
             context = (
                 f"Original request: {user_input}\n\n"
                 + (("Already completed:\n" + "\n".join(f"  ✓ {t}" for t in done) + "\n\n") if done else "")
-                + (("Still need to do:\n" + "\n".join(f"  • {t}" for t in pending)) if pending else "")
+                + (("Still need to do:\n"  + "\n".join(f"  • {t}" for t in pending)) if pending else "")
             )
 
     raw = chat(PLANNER_PROMPT, [{"role": "user", "content": context}])
@@ -311,34 +379,32 @@ def plan(user_input: str, existing_tasks: list[dict] | None = None) -> list[str]
     return tasks
 
 # ── executor ──────────────────────────────────────────────────────────────────
-MAX_ROUNDS  = 25
-MAX_ESCAPES = 3
-
 def execute_task(task_id: int, task: str, task_num: int, total: int) -> bool:
     print(f"\n{YEL}━━ Task {task_num}/{total} ━━{RESET} {task}")
     db_add("user", f"[TASK {task_num}/{total}]: {task}")
 
     tool_calls_made = 0
-    escape_count = 0
+    escape_count    = 0
+    stall           = StallDetector()
 
-    for round_num in range(1, MAX_ROUNDS + 1):
+    for round_num in range(1, BACKSTOP_ROUNDS + 1):
         history = db_history(n=50)
         reply = chat(EXECUTOR_PROMPT, history)
         reply_clean = strip_think(reply)
         reply_clean = re.sub(r"```[a-z]*\n?", "", reply_clean).strip()
 
-        # ── DONE ──
+        # ── DONE ──────────────────────────────────────────────────────────────
         if reply_clean.strip().upper() == "DONE":
             if tool_calls_made == 0:
                 print(f"    {RED}[WARN] DONE with no tool calls — forcing retry{RESET}")
                 db_add("tool", "[SYSTEM] You declared DONE without calling any tools. Call at least one tool to verify completion.")
                 continue
-            print(f"  {GRN}✓ Task {task_num} done ({tool_calls_made} calls){RESET}")
+            print(f"  {GRN}✓ Task {task_num} done ({tool_calls_made} calls, {round_num} rounds){RESET}")
             db_mark_task(task_id, "done")
             db_add("assistant", "DONE")
             return True
 
-        # ── escape detection ──
+        # ── escape detection ───────────────────────────────────────────────────
         if is_escape(reply_clean):
             captured = auto_capture_analysis(task, reply_clean, task_num)
             if captured:
@@ -358,30 +424,43 @@ def execute_task(task_id: int, task: str, task_num: int, total: int) -> bool:
             db_add("tool", "[SYSTEM] STOP. You are writing prose instead of calling tools. Respond ONLY with tool call JSON or the word DONE. No explanations.")
             continue
 
-        # ── tool calls ──
+        # ── tool calls ────────────────────────────────────────────────────────
         tools_found = parse_all_tools(reply_clean)
         if tools_found:
             db_add("assistant", reply_clean)
-            results, any_error = [], False
+            results = []
             for tc in tools_found:
                 name = tc.get("tool", "")
                 args = tc.get("arguments", {})
                 if isinstance(args, str): args = {"query": args}
-                result = run_tool(name, args)
+
+                result    = run_tool(name, args)
+                had_error = '"exit_code": 1' in result or "[TOOL ERROR]" in result
                 results.append(f"[{name}]: {result}")
                 tool_calls_made += 1
-                if '"exit_code": 1' in result or "[TOOL ERROR]" in result:
-                    any_error = True
+
+                # stall check per call
+                stalled, reason = stall.record(name, args, had_error)
+                if stalled:
+                    combined = "\n".join(results)
+                    db_add("tool", combined)
+                    print(f"  {RED}✗ Task {task_num} STALLED: {reason}{RESET}")
+                    db_mark_task(task_id, "failed")
+                    return False
+
             combined = "\n".join(results)
             db_add("tool", combined)
+            any_error = any('"exit_code": 1' in r or "[TOOL ERROR]" in r for r in results)
             print(f"    {DIM}round {round_num}: {len(tools_found)} tool(s) | errors={'yes' if any_error else 'no'}{RESET}")
+
         else:
-            # short non-escape reply
+            # short non-escape reply — no tool call, no DONE
             print(f"    {RED}[WARN] unrecognized reply: {reply_clean[:100]}{RESET}")
             db_add("assistant", reply_clean)
             db_add("tool", "[SYSTEM] Unrecognized response. Respond with tool call JSON or DONE.")
 
-    print(f"  {RED}✗ Task {task_num} hit MAX_ROUNDS{RESET}")
+    # backstop hit — shouldn't happen with a capable model
+    print(f"  {RED}✗ Task {task_num} hit BACKSTOP_ROUNDS ({BACKSTOP_ROUNDS}){RESET}")
     db_mark_task(task_id, "failed")
     return False
 
@@ -408,9 +487,9 @@ def run(user_input: str):
     for task_num, t in enumerate(tasks_to_run, 1):
         execute_task(t["id"], t["task"], task_num, total)
 
-    all_tasks = db_get_tasks()
-    done_count  = sum(1 for t in all_tasks if t["status"] == "done")
-    fail_count  = sum(1 for t in all_tasks if t["status"] == "failed")
+    all_tasks  = db_get_tasks()
+    done_count = sum(1 for t in all_tasks if t["status"] == "done")
+    fail_count = sum(1 for t in all_tasks if t["status"] == "failed")
     print(f"\n{GRN}[done]{RESET} {done_count}/{total} tasks complete, {fail_count} failed\n")
 
     if fail_count:
@@ -421,31 +500,44 @@ def run(user_input: str):
         print()
 
     print(f"{CYN}Summary:{RESET} ", end="", flush=True)
-    summary = chat(SUMMARIZER_PROMPT,
-                   [{"role": "user", "content": f"Request: {user_input}\nSummarize what was done."}],
-                   stream=True)
+    summary = chat(
+        SUMMARIZER_PROMPT,
+        [{"role": "user", "content": f"Request: {user_input}\nSummarize what was done."}],
+        stream=True,
+    )
     db_add("assistant", summary)
 
 # ── repl ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print(f"\n🚀 Agent | session={AGENT_SESSION} | mcp={MCP_SESSION} | db={DB}\n")
     last_input = ""
-    while True:
-        try:
-            user = input("You: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nBye."); break
-        if not user: continue
-        if user.lower() in {"exit", "quit"}: break
+    try:
+        while True:
+            try:
+                user = input("You: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nBye.")
+                break
+            if not user:
+                continue
+            if user.lower() in {"exit", "quit"}:
+                break
 
-        RETRY_WORDS = {"retry", "check again", "not done", "not yet", "redo", "try again", "resume"}
-        if any(w in user.lower() for w in RETRY_WORDS) and last_input:
-            print(f"{YEL}[retrying — re-marking failed/pending tasks]{RESET}")
-            for t in db_get_tasks():
-                if t["status"] in ("failed", "pending"):
-                    db_mark_task(t["id"], "pending")
-            run(last_input)
-        else:
-            last_input = user
-            AGENT_SESSION = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            run(user)
+            RETRY_WORDS = {"retry", "check again", "not done", "not yet", "redo", "try again", "resume"}
+            if any(w in user.lower() for w in RETRY_WORDS) and last_input:
+                print(f"{YEL}[retrying — re-marking failed/pending tasks]{RESET}")
+                for t in db_get_tasks():
+                    if t["status"] in ("failed", "pending"):
+                        db_mark_task(t["id"], "pending")
+                run(last_input)
+            else:
+                last_input = user
+                AGENT_SESSION = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                run(user)
+    finally:
+        try:
+            session_mcp.dispose()
+        except Exception:
+            pass
+        con.close()
+        mcp.close()

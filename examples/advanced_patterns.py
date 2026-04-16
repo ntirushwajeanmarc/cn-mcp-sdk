@@ -1,7 +1,7 @@
 """Advanced usage patterns for the current cn-mcp SDK."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from cn_mcp import MCPClient
 
@@ -14,7 +14,7 @@ with MCPClient(api_key="your-api-key") as client:
     with client.session() as workspace:
         print(f"Workspace session: {workspace.session_id}")
         result = workspace.tool_call("terminal_exec", cmd="pwd")
-        print(result["output"].strip())
+        print(result["stdout"].strip())
 
 print("\n" + "=" * 60)
 print("EXAMPLE 2: bulk file operations")
@@ -39,7 +39,7 @@ try:
         print(f"\nStored {len(files)} files")
 
         metadata = {
-            "written_at": datetime.utcnow().isoformat(),
+            "written_at": datetime.now(timezone.utc).isoformat(),
             "files": files,
         }
         client.files.write(

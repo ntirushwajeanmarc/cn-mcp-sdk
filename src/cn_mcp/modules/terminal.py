@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from ._request import request_json
 
 
 class TerminalClient:
@@ -36,7 +37,9 @@ class TerminalClient:
         Returns:
             Execution result with exit_code, stdout, stderr, duration_ms, truncated
         """
-        resp = self._client.post(
+        result = request_json(
+            self._client,
+            "POST",
             "/terminal/exec",
             json={
                 "session_id": session_id,
@@ -45,7 +48,6 @@ class TerminalClient:
                 "max_output_kb": output_limit_kb,
             },
         )
-        result = resp.json()
         # Normalize response to provide unified 'output' field combining stdout and stderr
         if "stdout" in result:
             result["output"] = result.get("stdout", "") + result.get("stderr", "")

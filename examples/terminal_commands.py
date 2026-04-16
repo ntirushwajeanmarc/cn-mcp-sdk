@@ -13,7 +13,10 @@ try:
     print("Executing 'ls -la'...")
     result = workspace.tool_call("terminal_exec", cmd="ls -la")
     print(f"Exit code: {result['exit_code']}")
-    print(f"Output:\n{result['output']}\n")
+    print(f"Stdout:\n{result['stdout']}")
+    if result["stderr"]:
+        print(f"Stderr:\n{result['stderr']}")
+    print()
 
     print("Executing 'echo hello'...")
     result = client.terminal.execute(
@@ -26,7 +29,7 @@ try:
 
     print("Using dynamic tool_call for pwd...")
     result = workspace.tool_call("terminal_exec", cmd="pwd")
-    print(f"✓ {result['output'].strip()}\n")
+    print(f"✓ {result['stdout'].strip()}\n")
 
     workspace.dispose()
 
