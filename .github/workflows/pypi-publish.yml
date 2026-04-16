@@ -1,8 +1,9 @@
 name: Publish cn-mcp to PyPI
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
 
 permissions:
   id-token: write
@@ -32,8 +33,10 @@ jobs:
 
   publish:
     runs-on: ubuntu-latest
-    environment: cn-mcp
     needs: test
+
+    permissions:
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -45,7 +48,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install build tools
-        run: python -m pip install --upgrade build twine
+        run: python -m pip install --upgrade build
 
       - name: Build package
         run: python -m build
