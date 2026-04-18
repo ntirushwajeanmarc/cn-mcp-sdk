@@ -6,9 +6,6 @@ from cn_mcp import MCPClient
 client = MCPClient(api_key="fcc1c0f2-f024-4983-998e-71e16bcdcc5c")
 
 try:
-    print("Available tools:")
-    print(client.list_tools())
-
     print("\nSearching: Python asyncio tutorial")
     results = client.tool_call("web_search", query="Python asyncio tutorial")
     organic = results.get("organic_results", [])

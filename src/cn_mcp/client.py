@@ -65,7 +65,7 @@ class BoundSessionClient:
     def list_tools(self, refresh: bool = False) -> list[str]:
         return self._client.list_tools(refresh=refresh)
 
-    def tool_call(self, tool_name: str, **kwargs: Any) -> dict[str, Any]:
+    def tool_call(self, tool_name: str, **kwargs: Any) -> Any:
         tool = self._client.get_tool_schema(tool_name)
         if tool.get("requires_session") and "session_id" not in kwargs:
             kwargs = {"session_id": self.session_id, **kwargs}
@@ -124,6 +124,7 @@ class MCPClient:
         self.devices = DevicesClient(self._client)
         self.db = DatabaseClient(self._client)
         self._tools_cache: dict[str, dict[str, Any]] = {}
+        self._default_session_id: str | None = None
 
     def __enter__(self) -> "MCPClient":
         """Context manager entry."""
@@ -145,6 +146,14 @@ class MCPClient:
     def bind_session(self, session_id: str) -> BoundSessionClient:
         """Bind an existing session to a helper that auto-injects ``session_id``."""
         return BoundSessionClient(self, session_id)
+
+    def set_default_session(self, session_id: str) -> None:
+        """Set a default session for ``tool_call`` on session-required tools."""
+        self._default_session_id = session_id
+
+    def clear_default_session(self) -> None:
+        """Clear the default session used by ``tool_call``."""
+        self._default_session_id = None
 
     def session(self) -> BoundSessionClient:
         """Create and return a disposable bound session helper."""
@@ -184,7 +193,7 @@ class MCPClient:
         self._tools_cache[tool_name] = tool
         return tool
 
-    def tool_call(self, tool_name: str, **kwargs: Any) -> dict[str, Any]:
+    def tool_call(self, tool_name: str, **kwargs: Any) -> Any:
         """Call a tool by name using the server's published tool contract.
 
         Args:
@@ -198,6 +207,8 @@ class MCPClient:
             MCPError: If tool not found or call fails
         """
         tool = self.get_tool_schema(tool_name)
+        if tool.get("requires_session") and "session_id" not in kwargs and self._default_session_id:
+            kwargs = {"session_id": self._default_session_id, **kwargs}
         endpoint = tool.get("endpoint")
         if not endpoint or " " not in endpoint:
             raise MCPError(f"Tool {tool_name!r} is missing a valid endpoint declaration")
@@ -292,7 +303,7 @@ class MCPClient:
                     f"Tool {tool_name!r} argument {name!r} must be one of: {allowed}"
                 )
 
-    def call_tool(self, tool_name: str, arguments: dict[str, Any] | None = None, **kwargs: Any) -> dict[str, Any]:
+    def call_tool(self, tool_name: str, arguments: dict[str, Any] | None = None, **kwargs: Any) -> Any:
         """Call a tool by name with arguments dictionary or kwargs.
 
         This method is compatible with the tool call pattern used by LLMs
@@ -327,7 +338,7 @@ class MCPClient:
         method: str,
         endpoint: str,
         **kwargs: Any,
-    ) -> dict[str, Any]:
+    ) -> Any:
         """Make an HTTP request to the MCP server.
 
         Args:
@@ -362,10 +373,7 @@ class MCPClient:
 
             content_type = resp.headers.get("content-type", "").lower()
             if "application/json" in content_type:
-                data = resp.json()
-                if not isinstance(data, dict):
-                    raise MCPError("Expected JSON object response")
-                return cast(dict[str, Any], data)
+                return resp.json()
 
             return {
                 "content": resp.content,

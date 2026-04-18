@@ -7,7 +7,7 @@ client = MCPClient(api_key="your-api-key")
 
 try:
     print("Available devices:")
-    devices = client.devices.list()
+    devices = client.tool_call("device_list")
     for device in devices:
         print(f"  - {device['name']}")
         print(f"    Type: {device['type']}")
@@ -16,10 +16,10 @@ try:
     if devices:
         target_name = devices[0]["name"]
         print(f"\nTurning on {target_name}...")
-        result = client.devices.set_state(device_name=target_name, state="on")
+        result = client.tool_call("device_set_state", device_name=target_name, state="on")
         print(f"✓ Updated: {result}")
 
-        print(f"\nTurning off {target_name} via dynamic tool call...")
+        print(f"\nTurning off {target_name}...")
         result = client.tool_call("device_set_state", device_name=target_name, state="off")
         print(f"✓ Updated: {result}")
 

@@ -1,79 +1,36 @@
 # CN MCP SDK Examples
 
-These examples reflect the current `cn-mcp` SDK and the live MCP tool contract.
+These examples use `mcp.tool_call(...)` style for agent-oriented integration.
 
 ## Highlights
 
-- Use `client.get_tools()` when you need full tool metadata.
-- Use `client.tool_call()` for dynamic agent-style execution.
-- Use `client.bind_session(session_id)` or `with client.session() as workspace:` for workspace-backed tools.
-- Use the typed modules like `client.files`, `client.devices`, `client.scheduler`, and `client.db` for developer-friendly direct calls.
+- Use `mcp.tool_call(...)` for all MCP actions.
+- For workspace tools, create a session first and pass `session_id`.
+- Dispose sessions at the end with `session_dispose`.
 
 ## Examples
 
 ### `quick_start.py`
 Small end-to-end example covering:
-- tool discovery
 - session creation
-- file write
-- device listing
-- terminal execution
-
-### `basic_usage.py`
-Shows:
-- dynamic tool calls
-- session-bound helper usage
-- file download URLs
-- auth cache stats
-
-### `dynamic_tool_usage.py`
-Best starting point for agent builders:
-- reads live tool metadata
-- shows `requires_session`
-- executes simulated agent tool calls through a bound session
+- file write via `file_write`
+- terminal execution via `terminal_exec`
+- cleanup via `session_dispose`
 
 ### `terminal_commands.py`
-Shows both:
-- `workspace.tool_call("terminal_exec", ...)`
-- `client.terminal.execute(...)`
-
-Note: dynamic `tool_call("terminal_exec", ...)` returns raw server fields like
-`stdout` and `stderr`. The typed `client.terminal.execute(...)` helper also adds
-an `output` convenience field.
-
-### `database_queries.py`
-Uses the current session-backed SQLite API:
-- `client.db.execute(...)`
-- `client.db.query(...)`
+Shows `terminal_exec` patterns with explicit `session_id`.
 
 ### `device_control.py`
-Uses the current device contract:
-- `client.devices.list()`
-- `client.devices.set_state(device_name=..., state=...)`
+Uses `device_list` and `device_set_state`.
 
 ### `scheduled_tasks.py`
-Uses the current scheduler contract:
-- `client.scheduler.schedule(...)`
-- `client.scheduler.list()`
-- `client.scheduler.cancel(...)`
-
-### `file_download.py`
-Shows how to:
-- write a file
-- use the returned `download_url`
-- download the binary content through the SDK
+Uses `time_schedule`, `time_scheduled_tasks`, and `time_cancel`.
 
 ### `error_handling.py`
 Shows recommended exception handling with:
 - `MCPAuthError`
 - `MCPNotFoundError`
 - `MCPError`
-
-### `advanced_patterns.py`
-Shows:
-- context-managed client usage
-- context-managed session usage
-- bulk operations with typed module APIs
 
 ### `agentic_use.py`
 Experimental autonomous orchestration example that combines an LLM and MCP

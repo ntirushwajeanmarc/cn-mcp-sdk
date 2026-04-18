@@ -15,126 +15,92 @@ export MCP_API_KEY="your-api-key"
 export MCP_BASE_URL="http://localhost:8000"
 ```
 
-## Quick Start
+## Quick Start (`tool_call` only)
 
 ```python
 from cn_mcp import MCPClient
 
-client = MCPClient(api_key="your-api-key")
+mcp = MCPClient(api_key="your-api-key")
 
-session = client.sessions.create()
-workspace = client.bind_session(session["session_id"])
+session = mcp.tool_call("session_create")
+session_id = session["session_id"]
 
-file_resp = client.files.write(
-    session_id=session["session_id"],
-    path="output/hello.txt",
-    content="Hello, World!",
-)
-print(file_resp["download_url"])
+try:
+    run = mcp.tool_call(
+        "terminal_exec",
+        session_id=session_id,
+        cmd="echo hello",
+        timeout_minutes=60,
+    )
+    print(run["stdout"])
 
-result = workspace.tool_call("terminal_exec", cmd="echo hello")
-print(result["stdout"])
-
-devices = client.devices.list()
-print(devices)
-
-client.sessions.dispose(session["session_id"])
+    zipped = mcp.tool_call("file_zip_session", session_id=session_id)
+    print(zipped["download_url"])
+finally:
+    mcp.tool_call("session_dispose", session_id=session_id)
+    mcp.close()
 ```
 
-For agentic workflows, `bind_session()` keeps session-backed tools aligned with
-the published MCP metadata without manually injecting `session_id`.
-
-## Dynamic Tool Calling
-
-The SDK now reads the live tool contract from the server, so `list_tools()` and
-`tool_call()` stay aligned with the deployed MCP.
-
-```python
-from cn_mcp import MCPClient
-
-client = MCPClient(api_key="your-api-key")
-
-print(client.list_tools())
-
-result = client.tool_call("device_set_state", device_name="kitchen", state="on")
-print(result)
-```
-
-Use `get_tools()` or `get_tool_schema("tool_name")` if you want the full
-published metadata from `/mcp/tools`.
-
-## Main APIs
-
-### Sessions
-
-```python
-session = client.sessions.create()
-sessions = client.sessions.list()
-client.sessions.dispose(session["session_id"])
-```
+## Tool-Call Examples
 
 ### Files
 
 ```python
-file_resp = client.files.write(session["session_id"], "reports/out.zip", b"zip bytes")
-files = client.files.list(session["session_id"])
-content = client.files.download(file_resp["file_id"])
-client.files.delete(file_resp["file_id"])
-```
+import base64
 
-`download_url` values returned by the server are concrete absolute URLs when the
-server knows its public base URL from the request.
-
-### Terminal
-
-```python
-result = client.terminal.execute(
-    session_id=session["session_id"],
-    command="python --version",
-    timeout_minutes=60,
-    output_limit_kb=1024,
+payload = base64.b64encode(b"hello").decode("utf-8")
+written = mcp.tool_call(
+    "file_write",
+    session_id=session_id,
+    path="reports/out.txt",
+    content_base64=payload,
 )
-```
-
-The SDK defaults to a longer HTTP timeout for agent workflows. You can override
-it globally with `MCPClient(timeout=...)` or env `MCP_HTTP_TIMEOUT_SECONDS`.
-
-### Search
-
-```python
-results = client.search.web("CircuitNotion")
-print(results["organic_results"])
+files = mcp.tool_call("file_list", session_id=session_id)
+binary = mcp.tool_call("file_download", file_id=written["file_id"])
+mcp.tool_call("file_delete", file_id=written["file_id"])
 ```
 
 ### Devices
 
 ```python
-devices = client.devices.list()
-result = client.devices.set_state(device_name="living room light", state="off")
+devices = mcp.tool_call("device_list")
+result = mcp.tool_call("device_set_state", device_name="living room light", state="off")
+```
+
+### Search
+
+```python
+results = mcp.tool_call("web_search", query="CircuitNotion")
+print(results.get("organic_results", []))
 ```
 
 ### Scheduler
 
 ```python
-task = client.scheduler.schedule(payload={"message": "follow up"}, in_seconds=300)
-tasks = client.scheduler.list()
-client.scheduler.cancel(task["task_id"])
+task = mcp.tool_call("time_schedule", payload={"message": "follow up"}, in_seconds=300)
+tasks = mcp.tool_call("time_scheduled_tasks")
+mcp.tool_call("time_cancel", task_id=task["task_id"])
 ```
 
 ### Database
 
 ```python
-rows = client.db.query(
-    session_id=session["session_id"],
+rows = mcp.tool_call(
+    "db_query",
+    session_id=session_id,
     sql="SELECT name FROM sqlite_master WHERE type = ?",
     params=["table"],
 )
 
-client.db.execute(
-    session_id=session["session_id"],
-    # db.execute supports INSERT/UPDATE/DELETE statements.
-    # This example assumes a `notes` table already exists.
+mcp.tool_call(
+    "db_execute",
+    session_id=session_id,
     sql="INSERT INTO notes (body) VALUES (?)",
     params=["hello"],
 )
 ```
+
+## Timeout Note
+
+The SDK defaults to an agent-friendly HTTP timeout and automatically extends
+timeout behavior for long-running tools such as `terminal_exec`.

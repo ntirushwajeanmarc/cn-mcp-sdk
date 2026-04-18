@@ -3,6 +3,7 @@ import json
 import os
 import re
 import sqlite3
+import base64
 from collections import deque
 from openai import OpenAI
 from cn_mcp import MCPClient
@@ -22,25 +23,53 @@ mcp   = MCPClient(api_key=os.getenv("MCP_API_KEY"))
 DIM, RESET, YEL, RED, GRN, CYN = "\033[2m", "\033[0m", "\033[33m", "\033[31m", "\033[32m", "\033[36m"
 
 # ── load tools ────────────────────────────────────────────────────────────────
-TOOL_SCHEMAS = mcp.get_tools()
-TOOLS = [tool["name"] for tool in TOOL_SCHEMAS]
+TOOLS = [
+    "terminal_exec",
+    "file_write",
+    "file_list",
+    "file_zip_session",
+    "file_download",
+    "file_delete",
+    "db_query",
+    "db_execute",
+    "session_create",
+    "session_list",
+    "session_dispose",
+    "device_list",
+    "device_set_state",
+    "web_search",
+    "time_schedule",
+    "time_scheduled_tasks",
+    "time_cancel",
+]
 print(f"{CYN}Tools:{RESET}", TOOLS)
-TOOL_SCHEMA_MAP = {tool["name"]: tool for tool in TOOL_SCHEMAS}
 
 # ── mcp session ───────────────────────────────────────────────────────────────
 print("Creating MCP session...")
-MCP_SESSION = mcp.sessions.create()["session_id"]
-session_mcp = mcp.bind_session(MCP_SESSION)
+MCP_SESSION = mcp.tool_call("session_create")["session_id"]
 print(f"MCP session: {MCP_SESSION}")
 
 def call_tool(name: str, args: dict):
-    return session_mcp.tool_call(name, **dict(args or {}))
+    payload = dict(args or {})
+    session_required_tools = {
+        "terminal_exec",
+        "file_write",
+        "file_list",
+        "file_zip_session",
+        "db_query",
+        "db_execute",
+    }
+    if name in session_required_tools and "session_id" not in payload:
+        payload["session_id"] = MCP_SESSION
+    return mcp.tool_call(name, **payload)
 
 def write_text_artifact(path: str, text: str) -> dict:
-    return mcp.files.write(
+    encoded = base64.b64encode(text.encode("utf-8")).decode("utf-8")
+    return mcp.tool_call(
+        "file_write",
         session_id=MCP_SESSION,
         path=path,
-        content=text,
+        content_base64=encoded,
     )
 
 # ── sqlite memory ─────────────────────────────────────────────────────────────
@@ -97,9 +126,45 @@ def db_get_tasks() -> list[dict]:
 
 # ── prompts ───────────────────────────────────────────────────────────────────
 TOOLS_STR = ", ".join(TOOLS)
-SEARCH_SCHEMA   = json.dumps(TOOL_SCHEMA_MAP.get("web_search",    {}).get("input_schema", {}), ensure_ascii=False)
-TERMINAL_SCHEMA = json.dumps(TOOL_SCHEMA_MAP.get("terminal_exec", {}).get("input_schema", {}), ensure_ascii=False)
-FILE_WRITE_SCHEMA = json.dumps(TOOL_SCHEMA_MAP.get("file_write",  {}).get("input_schema", {}), ensure_ascii=False)
+SEARCH_SCHEMA = json.dumps(
+    {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "location": {"type": "string"},
+            "num": {"type": "integer"},
+        },
+        "required": ["query"],
+    },
+    ensure_ascii=False,
+)
+TERMINAL_SCHEMA = json.dumps(
+    {
+        "type": "object",
+        "properties": {
+            "session_id": {"type": "string"},
+            "cmd": {"type": "string"},
+            "cwd": {"type": "string"},
+            "env": {"type": "object"},
+            "timeout_minutes": {"type": "integer", "default": 60},
+            "max_output_kb": {"type": "integer", "default": 256},
+        },
+        "required": ["session_id", "cmd"],
+    },
+    ensure_ascii=False,
+)
+FILE_WRITE_SCHEMA = json.dumps(
+    {
+        "type": "object",
+        "properties": {
+            "session_id": {"type": "string"},
+            "path": {"type": "string"},
+            "content_base64": {"type": "string"},
+        },
+        "required": ["session_id", "path", "content_base64"],
+    },
+    ensure_ascii=False,
+)
 
 PLANNER_PROMPT = f"""You are a senior engineer planning work for an autonomous agent.
 Given a user request, output ONLY a JSON array of high-level tasks.
@@ -137,7 +202,7 @@ STRICT RULES:
    {{"tool": "tool_name", "arguments": {{"key": "value"}}}}
 3. Prefer ONE tool call at a time unless two are obviously needed.
 4. "arguments" must always be a dict, never a string.
-5. session_id is auto-injected for workspace tools — NEVER include it.
+5. For workspace tools, include session_id unless already injected by runtime.
 6. ALWAYS use absolute paths. Do NOT rely on `cd` — it doesn't persist between calls.
    Instead of: cd backend && npm install
    Do:         terminal_exec with command "npm --prefix /abs/path/backend install"
@@ -536,7 +601,7 @@ if __name__ == "__main__":
                 run(user)
     finally:
         try:
-            session_mcp.dispose()
+            mcp.tool_call("session_dispose", session_id=MCP_SESSION)
         except Exception:
             pass
         con.close()

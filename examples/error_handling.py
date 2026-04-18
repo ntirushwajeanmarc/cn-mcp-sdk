@@ -9,7 +9,7 @@ print("=" * 60)
 
 client = MCPClient(api_key="invalid-key", base_url="http://localhost:8000")
 try:
-    client.sessions.list()
+    client.tool_call("session_list")
 except MCPAuthError as exc:
     print(f"✗ Authentication failed: {exc}\n")
 finally:
@@ -45,14 +45,17 @@ print("=" * 60)
 
 client = MCPClient(api_key="your-api-key", base_url="http://localhost:8000")
 try:
-    with client.session() as workspace:
-        print(f"✓ Session created: {workspace.session_id}")
-        file_resp = workspace.tool_call(
-            "file_write",
-            path="output/example.txt",
-            content_base64="RXhhbXBsZSBjb250ZW50",
-        )
-        print(f"✓ File written: {file_resp['file_id']}")
+    session = client.tool_call("session_create")
+    session_id = session["session_id"]
+    print(f"✓ Session created: {session_id}")
+    file_resp = client.tool_call(
+        "file_write",
+        session_id=session_id,
+        path="output/example.txt",
+        content_base64="RXhhbXBsZSBjb250ZW50",
+    )
+    print(f"✓ File written: {file_resp['file_id']}")
+    client.tool_call("session_dispose", session_id=session_id)
 except MCPAuthError as exc:
     print(f"✗ Authentication error: {exc}")
 except MCPNotFoundError as exc:
