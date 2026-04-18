@@ -91,10 +91,13 @@ server knows its public base URL from the request.
 result = client.terminal.execute(
     session_id=session["session_id"],
     command="python --version",
-    timeout_minutes=5,
+    timeout_minutes=60,
     output_limit_kb=1024,
 )
 ```
+
+The SDK defaults to a longer HTTP timeout for agent workflows. You can override
+it globally with `MCPClient(timeout=...)` or env `MCP_HTTP_TIMEOUT_SECONDS`.
 
 ### Search
 

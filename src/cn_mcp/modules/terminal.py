@@ -23,7 +23,7 @@ class TerminalClient:
         self,
         session_id: str,
         command: str,
-        timeout_minutes: int = 5,
+        timeout_minutes: int = 60,
         output_limit_kb: int = 256,
     ) -> dict[str, Any]:
         """Execute a terminal command in a session.
@@ -31,7 +31,7 @@ class TerminalClient:
         Args:
             session_id: Session ID
             command: Shell command to execute
-            timeout_minutes: Command timeout in minutes (default: 5, max: 60)
+            timeout_minutes: Command timeout in minutes (default: 60, max: server-configured cap)
             output_limit_kb: Output size limit in KB (default: 256, max: 4096)
 
         Returns:

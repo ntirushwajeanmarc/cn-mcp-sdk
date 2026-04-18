@@ -79,7 +79,7 @@ class MCPClient:
         self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        timeout: int = 30,
+        timeout: int | float | None = None,
         verify_ssl: bool = True,
     ):
         """Initialize MCP client.
@@ -87,7 +87,7 @@ class MCPClient:
         Args:
             api_key: API key for authentication. If not provided, uses MCP_API_KEY env var.
             base_url: Base URL of MCP server. If not provided, uses MCP_BASE_URL env var.
-            timeout: Request timeout in seconds (default: 30).
+            timeout: Request timeout in seconds (default: 120).
             verify_ssl: Whether to verify SSL certificates (default: True).
 
         Raises:
@@ -99,14 +99,18 @@ class MCPClient:
 
         resolved_base_url = base_url or os.getenv("MCP_BASE_URL") or "https://mcp.circuitnotion.com"
         self.base_url = resolved_base_url.rstrip("/")
-        self.timeout = timeout
+        default_timeout = float(os.getenv("MCP_HTTP_TIMEOUT_SECONDS", "120"))
+        self.timeout = float(timeout) if timeout is not None else default_timeout
+        self._terminal_timeout_buffer_seconds = float(
+            os.getenv("MCP_TERMINAL_HTTP_TIMEOUT_BUFFER_SECONDS", "30")
+        )
         self.verify_ssl = verify_ssl
 
         # Create HTTP client with default headers
         self._client = httpx.Client(
             base_url=self.base_url,
             headers={"X-API-Key": self.api_key},
-            timeout=timeout,
+            timeout=self.timeout,
             verify=verify_ssl,
         )
 
@@ -213,15 +217,42 @@ class MCPClient:
 
         remaining = {k: v for k, v in kwargs.items() if k not in path_params}
         self._validate_tool_arguments(tool_name, tool, remaining, path_params)
+        request_timeout = self._request_timeout_for_tool(tool_name, tool, remaining)
 
         if method == "GET":
-            return self._request("GET", path_only, params=remaining)
+            return self._request("GET", path_only, params=remaining, timeout=request_timeout)
         if method == "DELETE":
-            return self._request("DELETE", path_only, params=remaining)
+            return self._request("DELETE", path_only, params=remaining, timeout=request_timeout)
         if method == "POST":
-            return self._request("POST", path_only, json=remaining)
+            return self._request("POST", path_only, json=remaining, timeout=request_timeout)
 
         raise MCPError(f"Unsupported tool HTTP method: {method}")
+
+    def _request_timeout_for_tool(
+        self,
+        tool_name: str,
+        tool_schema: dict[str, Any],
+        arguments: dict[str, Any],
+    ) -> float:
+        timeout_seconds = self.timeout
+
+        if tool_name == "terminal_exec":
+            timeout_minutes = arguments.get("timeout_minutes")
+            if not isinstance(timeout_minutes, int):
+                input_schema = tool_schema.get("input_schema", {})
+                properties = input_schema.get("properties", {}) if isinstance(input_schema, dict) else {}
+                timeout_spec = properties.get("timeout_minutes", {}) if isinstance(properties, dict) else {}
+                timeout_minutes = timeout_spec.get("default") if isinstance(timeout_spec, dict) else None
+            if not isinstance(timeout_minutes, int):
+                timeout_minutes = 60
+
+            terminal_timeout = (timeout_minutes * 60) + self._terminal_timeout_buffer_seconds
+            timeout_seconds = max(timeout_seconds, float(terminal_timeout))
+
+        elif tool_name == "file_zip_session":
+            timeout_seconds = max(timeout_seconds, 300.0)
+
+        return timeout_seconds
 
     def _validate_tool_arguments(
         self,

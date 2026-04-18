@@ -3,7 +3,7 @@
 from cn_mcp import MCPClient
 
 
-client = MCPClient(api_key="your-api-key")
+client = MCPClient(api_key="fcc1c0f2-f024-4983-998e-71e16bcdcc5c")
 
 try:
     print("Available tools:")

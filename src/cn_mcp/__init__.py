@@ -5,7 +5,7 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("cn-mcp")
 except PackageNotFoundError:
-    __version__ = "0.3.1"
+    __version__ = "0.3.5"
 
 from .client import BoundSessionClient, MCPClient
 from .errors import MCPAuthError, MCPError, MCPNotFoundError
