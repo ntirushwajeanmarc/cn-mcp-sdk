@@ -189,7 +189,10 @@ class MCPClient:
         if not refresh and tool_name in self._tools_cache:
             return self._tools_cache[tool_name]
 
-        tool = self._request("GET", f"/mcp/tools/{tool_name}")
+        tool_raw = self._request("GET", f"/mcp/tools/{tool_name}")
+        if not isinstance(tool_raw, dict):
+            raise MCPError("Invalid tool schema response from server")
+        tool = cast(dict[str, Any], tool_raw)
         self._tools_cache[tool_name] = tool
         return tool
 
