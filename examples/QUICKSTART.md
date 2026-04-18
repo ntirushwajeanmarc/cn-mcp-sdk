@@ -11,42 +11,28 @@ pip install cn-mcp
 ```python
 from cn_mcp import MCPClient
 
-client = MCPClient(api_key="your-api-key")
+mcp = MCPClient(api_key="your-api-key")
 ```
 
-## Create a Session Workspace
+## Create and Bind a Default Session
 
 ```python
-session = client.sessions.create()
-workspace = client.bind_session(session["session_id"])
-print(workspace.session_id)
-```
-
-Or use automatic cleanup:
-
-```python
-with client.session() as workspace:
-    print(workspace.session_id)
-```
-
-## Discover the Live Tool Contract
-
-```python
-for tool in client.get_tools():
-    print(tool["name"], tool["endpoint"], tool.get("requires_session"))
+session = mcp.tool_call("session_create")
+session_id = session["session_id"]
+mcp.set_default_session(session_id)
 ```
 
 ## Execute Commands
 
 ```python
-result = workspace.tool_call("terminal_exec", cmd="ls -la")
+result = mcp.tool_call("terminal_exec", cmd="ls -la")
 print(result["stdout"])
 ```
 
 ## Manage Files
 
 ```python
-file_resp = workspace.tool_call(
+file_resp = mcp.tool_call(
     "file_write",
     path="output/data.txt",
     content_base64="SGVsbG8=",
@@ -54,45 +40,43 @@ file_resp = workspace.tool_call(
 
 print(file_resp["download_url"])
 
-files = workspace.tool_call("file_list")
-binary = client.tool_call("file_download", file_id=file_resp["file_id"])
+files = mcp.tool_call("file_list")
+binary = mcp.tool_call("file_download", file_id=file_resp["file_id"])
 ```
 
 ## Devices
 
 ```python
-devices = client.devices.list()
+devices = mcp.tool_call("device_list")
 if devices:
-    client.devices.set_state(device_name=devices[0]["name"], state="on")
+    mcp.tool_call("device_set_state", device_name=devices[0]["name"], state="on")
 ```
 
 ## Database
 
 ```python
-client.db.execute(
-    session_id=workspace.session_id,
+mcp.tool_call(
+    "db_execute",
     # db.execute supports INSERT/UPDATE/DELETE statements.
     # This example assumes a `notes` table already exists.
     sql="INSERT INTO notes (body) VALUES (?)",
     params=["hello"],
 )
 
-rows = client.db.query(
-    session_id=workspace.session_id,
-    sql="SELECT * FROM notes",
-)
+rows = mcp.tool_call("db_query", sql="SELECT * FROM notes")
 ```
 
 ## Scheduler
 
 ```python
-task = client.scheduler.schedule(payload={"action": "backup"}, in_seconds=60)
+task = mcp.tool_call("time_schedule", payload={"action": "backup"}, in_seconds=60)
 print(task["task_id"])
 ```
 
 ## Cleanup
 
 ```python
-workspace.dispose()
-client.close()
+mcp.tool_call("session_dispose", session_id=session_id)
+mcp.clear_default_session()
+mcp.close()
 ```

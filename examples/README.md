@@ -5,7 +5,7 @@ These examples use `mcp.tool_call(...)` style for agent-oriented integration.
 ## Highlights
 
 - Use `mcp.tool_call(...)` for all MCP actions.
-- For workspace tools, create a session first and pass `session_id`.
+- For workspace tools, either pass `session_id` or set a default with `mcp.set_default_session(...)`.
 - Dispose sessions at the end with `session_dispose`.
 
 ## Examples
@@ -16,6 +16,9 @@ Small end-to-end example covering:
 - file write via `file_write`
 - terminal execution via `terminal_exec`
 - cleanup via `session_dispose`
+
+### `simple.py`
+Minimal script showing default-session auto-injection for `tool_call`.
 
 ### `terminal_commands.py`
 Shows `terminal_exec` patterns with explicit `session_id`.
