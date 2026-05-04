@@ -196,6 +196,67 @@ class MCPClient:
         self._tools_cache[tool_name] = tool
         return tool
 
+    def get_agent_guide(self) -> dict[str, Any]:
+        """Return the LLM-oriented guide from ``GET /mcp/guide``."""
+        guide = self._request("GET", "/mcp/guide")
+        if not isinstance(guide, dict):
+            raise MCPError("Invalid agent guide response from server")
+        return cast(dict[str, Any], guide)
+
+    def agent_call(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any] | None = None,
+        *,
+        auto_create_session: bool = False,
+        return_envelope: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        """Call a tool through the simplified server-side ``POST /mcp/call`` route.
+
+        This is the lowest-friction path for LLM runtimes because the server
+        handles HTTP method/path details and can create a session for one-off
+        workspace calls.
+
+        Args:
+            tool_name: Tool name from ``GET /mcp/tools``.
+            arguments: Tool arguments as a dictionary.
+            auto_create_session: Let the server create ``session_id`` when needed.
+            return_envelope: Return the full ``{"ok", "tool", "result", ...}`` response.
+            **kwargs: Additional tool arguments.
+        """
+        merged_arguments = dict(arguments or {})
+        if kwargs:
+            merged_arguments.update(kwargs)
+
+        request_timeout = self.timeout
+        try:
+            tool_schema = self.get_tool_schema(tool_name)
+            request_timeout = self._request_timeout_for_tool(
+                tool_name,
+                tool_schema,
+                merged_arguments,
+            )
+        except MCPError:
+            # Let /mcp/call return the authoritative server error.
+            pass
+
+        envelope = self._request(
+            "POST",
+            "/mcp/call",
+            json={
+                "tool": tool_name,
+                "arguments": merged_arguments,
+                "auto_create_session": auto_create_session,
+            },
+            timeout=request_timeout,
+        )
+        if return_envelope:
+            return envelope
+        if isinstance(envelope, dict) and "result" in envelope:
+            return envelope["result"]
+        return envelope
+
     def tool_call(self, tool_name: str, **kwargs: Any) -> Any:
         """Call a tool by name using the server's published tool contract.
 
